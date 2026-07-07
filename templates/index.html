@@ -52,13 +52,21 @@
 <body>
     <div class="mesh-bg"></div>
     
-    <button id="theme-toggle" class="theme-toggle-btn" aria-label="Alternar Tema">
+    <button id="theme-toggle" class="theme-toggle-btn" aria-label="Alternar tema">
         <i class="fa-solid fa-moon"></i>
     </button>
 
-    <button id="btn-update-ytdl" class="theme-toggle-btn ytdl-update-btn" title="Atualizar Motor de Download (yt-dlp)">
+        <button id="btn-update-ytdl" class="theme-toggle-btn ytdl-update-btn" title="Atualizar Motor de Download (yt-dlp)" aria-label="Atualizar yt-dlp">
         <i class="fa-solid fa-arrows-rotate"></i>
     </button>
+
+    <!-- Top App Bar -->
+    <div class="top-app-bar">
+        <div class="top-app-bar-title">
+            <i class="fa-solid fa-hurricane"></i>
+            Vortex
+        </div>
+    </div>
 
     <div class="app-container">
         <!-- Header -->
@@ -75,7 +83,7 @@
             <div class="input-wrapper">
                 <i class="fa-solid fa-link input-icon"></i>
                 <input type="text" id="album-url" placeholder="Cole qualquer link aqui (YouTube, Instagram, TikTok, etc.)" autocomplete="off">
-                <button id="btn-paste" class="btn btn-secondary btn-paste-class" title="Colar Link da Área de Transferência" type="button" style="margin: 6px 4px 6px 0; padding: 0 14px; display: flex; align-items: center; justify-content: center;">
+                <button id="btn-paste" class="btn btn-secondary btn-paste-class" title="Colar Link da Área de Transferência" type="button" aria-label="Colar link" style="margin: 6px 4px 6px 0; padding: 0 14px; display: flex; align-items: center; justify-content: center;">
                     <i class="fa-solid fa-clipboard"></i>
                 </button>
                 <button id="btn-analyze" class="btn btn-primary" style="margin: 6px 6px 6px 0;">
@@ -115,10 +123,10 @@
                     <input type="file" id="cookies-file-input" accept=".txt" style="display: none;">
                     <div class="path-wrapper" style="display: flex; gap: 8px; align-items: stretch; width: 100%;">
                         <input type="text" id="cookies-path" placeholder="Nenhum arquivo cookies.txt selecionado" readonly style="flex: 1; min-width: 0;">
-                        <button id="btn-browse-cookies" class="btn btn-secondary" style="padding: 8px 14px; font-size: 0.82rem; border-radius: 8px;">
+                        <button id="btn-browse-cookies" class="btn btn-secondary" aria-label="Importar cookies" style="padding: 8px 14px; font-size: 0.82rem; border-radius: 8px;">
                             <i class="fa-solid fa-file-import"></i> Importar
                         </button>
-                        <button id="btn-clear-cookies" class="btn btn-secondary" style="padding: 8px 14px; font-size: 0.82rem; border-radius: 8px;" title="Remover Cookies">
+                        <button id="btn-clear-cookies" class="btn btn-secondary" aria-label="Remover cookies" style="padding: 8px 14px; font-size: 0.82rem; border-radius: 8px;" title="Remover Cookies">
                             <i class="fa-solid fa-trash-can"></i>
                         </button>
                     </div>
@@ -206,11 +214,11 @@
                 <!-- Filters -->
                 <div class="media-controls">
                     <div class="filter-group">
-                        <button class="filter-btn active" data-filter="all">Tudo</button>
-                        <button class="filter-btn" data-filter="video"><i class="fa-solid fa-video"></i> Vídeos</button>
-                        <button class="filter-btn" data-filter="audio"><i class="fa-solid fa-music"></i> Áudios</button>
-                        <button class="filter-btn" data-filter="image"><i class="fa-solid fa-image"></i> Imagens</button>
-                        <button class="filter-btn" data-filter="document"><i class="fa-solid fa-file-lines"></i> Arquivos</button>
+                        <button class="chip active" data-filter="all">Tudo</button>
+                        <button class="chip" data-filter="video"><span class="chip-icon"><i class="fa-solid fa-video"></i></span> Vídeos</button>
+                        <button class="chip" data-filter="audio"><span class="chip-icon"><i class="fa-solid fa-music"></i></span> Áudios</button>
+                        <button class="chip" data-filter="image"><span class="chip-icon"><i class="fa-solid fa-image"></i></span> Imagens</button>
+                        <button class="chip" data-filter="document"><span class="chip-icon"><i class="fa-solid fa-file-lines"></i></span> Arquivos</button>
                     </div>
                     <div class="selection-group">
                         <button id="btn-select-all" class="control-btn"><i class="fa-solid fa-check-double"></i> Marcar Tudo</button>
@@ -237,7 +245,7 @@
                     <label for="download-path"><i class="fa-solid fa-folder-closed"></i> Destino dos Downloads</label>
                     <div class="path-wrapper" style="display: flex; gap: 8px; align-items: stretch; width: 100%;">
                         <input type="text" id="download-path" placeholder="Caminho da pasta" style="flex: 1; min-width: 0;">
-                        <button id="btn-browse" class="btn btn-secondary" style="padding: 8px 14px; font-size: 0.82rem; border-radius: 8px;">
+                        <button id="btn-browse" class="btn btn-secondary" aria-label="Alterar pasta" style="padding: 8px 14px; font-size: 0.82rem; border-radius: 8px;">
                             <i class="fa-regular fa-folder-open"></i> Alterar
                         </button>
                     </div>
@@ -308,7 +316,7 @@
 
     <!-- Video Preview Modal -->
     <div id="preview-modal" class="modal-overlay hidden">
-        <button id="btn-prev-video" class="modal-nav-btn prev" title="Vídeo Anterior"><i class="fa-solid fa-chevron-left"></i></button>
+        <button id="btn-prev-video" class="modal-nav-btn prev" title="Vídeo Anterior" aria-label="Vídeo anterior"><i class="fa-solid fa-chevron-left"></i></button>
         <div class="modal-content card" style="max-width: 800px; width: 92%; padding: 1.25rem; text-align: left;">
             <div class="modal-header">
                 <h3 id="preview-title">Prévia do Vídeo</h3>
@@ -318,26 +326,26 @@
                 <video id="preview-video-player" controls style="width: 100%; height: 100%; object-fit: contain;"></video>
             </div>
         </div>
-        <button id="btn-next-video" class="modal-nav-btn next" title="Próximo Vídeo"><i class="fa-solid fa-chevron-right"></i></button>
+        <button id="btn-next-video" class="modal-nav-btn next" title="Próximo Vídeo" aria-label="Próximo vídeo"><i class="fa-solid fa-chevron-right"></i></button>
     </div>
 
     <!-- Image Preview Modal -->
     <div id="image-preview-modal" class="modal-overlay hidden">
-        <button id="btn-prev-image" class="modal-nav-btn prev" title="Imagem Anterior"><i class="fa-solid fa-chevron-left"></i></button>
+        <button id="btn-prev-image" class="modal-nav-btn prev" title="Imagem Anterior" aria-label="Imagem anterior"><i class="fa-solid fa-chevron-left"></i></button>
         <div class="modal-content card" style="max-width: 90%; max-height: 90vh; width: auto; padding: 1.25rem; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(10, 15, 30, 0.95); border-color: rgba(255,255,255,0.1);">
             <div class="modal-header" style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 20px;">
                 <h3 id="image-preview-title" style="margin: 0; font-size: 1.1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; color: var(--text-primary);">Prévia da Imagem</h3>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <button id="btn-select-image" class="control-btn" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-check"></i> Selecionar</button>
-                    <button id="btn-zoom-image" class="control-btn" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-magnifying-glass-plus"></i> Zoom</button>
-                    <button id="btn-close-image-preview" class="control-btn" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-xmark"></i> Fechar</button>
+                    <button id="btn-select-image" class="control-btn" aria-label="Selecionar imagem" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-check"></i> Selecionar</button>
+                    <button id="btn-zoom-image" class="control-btn" aria-label="Zoom" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-magnifying-glass-plus"></i> Zoom</button>
+                    <button id="btn-close-image-preview" class="control-btn" aria-label="Fechar preview" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-xmark"></i> Fechar</button>
                 </div>
             </div>
             <div id="preview-image-container" style="max-width: 100%; max-height: 75vh; overflow: hidden; display: flex; justify-content: center; align-items: center; width: 100%; cursor: grab; touch-action: none;">
                 <img id="preview-image-element" style="max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 6px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); cursor: zoom-in; transition: transform 0.15s ease-out; user-select: none; -webkit-user-drag: none;">
             </div>
         </div>
-        <button id="btn-next-image" class="modal-nav-btn next" title="Próxima Imagem"><i class="fa-solid fa-chevron-right"></i></button>
+        <button id="btn-next-image" class="modal-nav-btn next" title="Próxima Imagem" aria-label="Próxima imagem"><i class="fa-solid fa-chevron-right"></i></button>
     </div>
 
     <!-- Manga Reader (Modo Leitura) Modal -->
@@ -361,7 +369,7 @@
         <div class="modal-content card" style="max-width: 320px; width: 92%; padding: 1.5rem; text-align: center;">
             <div class="modal-header" style="justify-content: space-between; align-items: center; margin-bottom: 12px; display: flex;">
                 <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-primary);"><i class="fa-solid fa-share-nodes"></i> Compartilhar</h3>
-                <button id="btn-close-share" class="control-btn" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-xmark"></i></button>
+                        <button id="btn-close-share" class="control-btn" aria-label="Fechar" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0 0 15px 0;">
                 Escaneie o QR Code com o seu celular (conectado na mesma rede Wi-Fi) para baixar o arquivo.

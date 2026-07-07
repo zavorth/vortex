@@ -32,10 +32,22 @@
 
     --text-primary: #f8fafc;                  /* M3 on-surface */
     --text-secondary: #94a3b8;                /* M3 on-surface-variant */
-    --text-muted: #64748b;
+    --text-muted: #94a3b8;
 
     --font-display: 'Outfit', system-ui, sans-serif;
     --font-body: 'Inter', system-ui, sans-serif;
+
+    /* M3 Typography Scale */
+    --type-display-large: 3rem/1.1 var(--font-display);
+    --type-display-medium: 2.25rem/1.15 var(--font-display);
+    --type-headline-large: 1.75rem/1.25 var(--font-display);
+    --type-headline-medium: 1.5rem/1.3 var(--font-display);
+    --type-title-large: 1.25rem/1.3 var(--font-display);
+    --type-title-medium: 1rem/1.4;
+    --type-body-large: 1rem/1.6 var(--font-body);
+    --type-body-medium: 0.875rem/1.5 var(--font-body);
+    --type-label-large: 0.875rem/1.4;
+    --type-label-medium: 0.75rem/1.3;
 
     --radius-sm: 8px;
     --radius-md: 12px;
@@ -47,6 +59,46 @@
     --transition-fast: 150ms var(--ease-out);
     --transition-normal: 250ms var(--ease-out);
     --transition-slow: 400ms var(--ease-out);
+}
+
+/* ── OS Preference: Light Theme ── */
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg-void: #f8fafc;
+        --bg-deep: #f1f5f9;
+        --bg-surface: #ffffff;
+        --card-bg: rgba(255, 255, 255, 0.85);
+        --card-bg-hover: rgba(241, 245, 249, 0.95);
+        --border: rgba(15, 23, 42, 0.06);
+        --border-hover: rgba(15, 23, 42, 0.12);
+        --border-accent: rgba(59, 130, 246, 0.3);
+        --glow-cyan: rgba(59, 130, 246, 0.15);
+        --glow-purple: rgba(139, 92, 246, 0.15);
+        --text-primary: #0f172a;
+        --text-secondary: #475569;
+        --text-muted: #7c8aa2;
+        --title-gradient: linear-gradient(135deg, #0f172a 30%, #2563eb 70%, #7c3aed 100%);
+    }
+}
+
+/* ── OS Preference: Dark Theme (explicit override) ── */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-void: #060913;
+        --bg-deep: #0a0e1c;
+        --bg-surface: #10152b;
+        --card-bg: rgba(16, 21, 43, 0.85);
+        --card-bg-hover: rgba(24, 31, 64, 0.9);
+        --border: rgba(255, 255, 255, 0.05);
+        --border-hover: rgba(255, 255, 255, 0.12);
+        --border-accent: rgba(59, 130, 246, 0.35);
+        --glow-cyan: rgba(59, 130, 246, 0.25);
+        --glow-purple: rgba(139, 92, 246, 0.25);
+        --text-primary: #f8fafc;
+        --text-secondary: #94a3b8;
+        --text-muted: #94a3b8;
+        --title-gradient: linear-gradient(135deg, #ffffff 30%, var(--cyan-bright) 60%, var(--purple-bright) 100%);
+    }
 }
 
 /* ── Reset ── */
@@ -155,15 +207,15 @@ body {
 }
 
 .main-header h1 {
+    font-size: 3rem;
+    line-height: 1.1;
     font-family: var(--font-display);
     font-weight: 800;
-    font-size: 3rem;
     letter-spacing: -1.5px;
     background: var(--title-gradient);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    line-height: 1.1;
 }
 
 .main-header .subtitle {
@@ -185,6 +237,9 @@ body {
     transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    font-family: var(--font-body);
 }
 
 .card:hover {
@@ -250,9 +305,10 @@ body {
     border: none;
     outline: none;
     cursor: pointer;
-    font-family: var(--font-display);
-    font-weight: 600;
-    font-size: 0.9rem;
+    font-family: var(--font-body);
+    font-weight: 500;
+    font-size: 0.875rem;
+    line-height: 1.4;
     padding: 0.75rem 1.5rem;
     border-radius: 100px;
     transition: all var(--transition-normal);
@@ -315,6 +371,17 @@ body {
     border-color: var(--border-hover);
 }
 
+/* ── Focus Visible (Accessibility) ── */
+.btn:focus-visible,
+.filter-btn:focus-visible,
+.control-btn:focus-visible,
+.card-action-btn:focus-visible,
+input:focus-visible,
+.theme-toggle-btn:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+}
+
 /* Loading state */
 .btn .spinner { display: none; }
 .btn.loading .btn-text { display: none; }
@@ -373,7 +440,7 @@ body {
 
 .album-title {
     font-family: var(--font-display);
-    font-weight: 700;
+    font-weight: 600;
     font-size: 1.25rem;
     line-height: 1.3;
 }
@@ -406,6 +473,7 @@ body {
     border: none;
     outline: none;
     color: var(--text-secondary);
+    min-height: 40px;
     padding: 6px 16px;
     border-radius: 100px;
     font-size: 0.85rem;
@@ -430,6 +498,68 @@ body {
     box-shadow: 0 0 10px rgba(59, 130, 246, 0.1);
 }
 
+/* ═══════════════════
+   M3 CHIPS
+   ═══════════════════ */
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: var(--font-body);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 150ms;
+    outline: none;
+}
+
+.chip:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.chip.active {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--cyan);
+    border-color: var(--cyan);
+}
+
+.chip-icon {
+    font-size: 18px;
+}
+
+/* ═══════════════════
+   TOP APP BAR
+   ═══════════════════ */
+.top-app-bar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: rgba(10, 15, 27, 0.9);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+}
+
+.top-app-bar-title {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .selection-group {
     display: flex;
     gap: 6px;
@@ -440,6 +570,7 @@ body {
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-muted);
+    min-height: 40px;
     padding: 6px 12px;
     border-radius: 6px;
     font-size: 0.8rem;
@@ -693,8 +824,8 @@ body {
     border: none;
     outline: none;
     color: #fff;
-    width: 34px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     font-size: 0.8rem;
     cursor: pointer;
@@ -990,8 +1121,9 @@ body {
 
 .modal-content h2 {
     font-family: var(--font-display);
-    font-weight: 700;
+    font-weight: 600;
     font-size: 1.5rem;
+    line-height: 1.3;
 }
 
 .modal-content p {
@@ -1291,7 +1423,7 @@ body.light-theme {
     --glow-purple: rgba(139, 92, 246, 0.15);
     --text-primary: #0f172a;
     --text-secondary: #475569;
-    --text-muted: #64748b;
+    --text-muted: #7c8aa2;
     --title-gradient: linear-gradient(135deg, #0f172a 30%, #2563eb 70%, #7c3aed 100%);
 }
 
@@ -1340,6 +1472,30 @@ body.light-theme .filter-btn:not(.active) {
 body.light-theme .filter-btn:not(.active):hover {
     background: rgba(0, 0, 0, 0.04);
     color: var(--text-primary);
+}
+
+/* Light Theme Chips */
+body.light-theme .chip {
+    background: transparent;
+    border-color: rgba(15, 23, 42, 0.12);
+    color: var(--text-secondary);
+}
+
+body.light-theme .chip:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--text-primary);
+}
+
+body.light-theme .chip.active {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--cyan);
+    border-color: var(--cyan);
+}
+
+/* Light Theme Top App Bar */
+body.light-theme .top-app-bar {
+    background: rgba(255, 255, 255, 0.9);
+    border-bottom-color: rgba(15, 23, 42, 0.06);
 }
 
 body.light-theme .media-card {
