@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import json
 import urllib.parse
 import random
 import socket
@@ -35,12 +36,12 @@ def is_extension_allowed(ext_id):
     """Checks if a given Chrome extension ID is permitted. Fail-closed by default."""
     # Dev bypass: only via explicit environment variable
     if os.environ.get('VORTEX_DEV_ALLOW_ANY_EXTENSION', '').lower() == 'true':
-        print(f"[SECURITY DEV] Extension ID '{ext_id}' allowed via VORTEX_DEV_ALLOW_ANY_EXTENSION.")
+        logger.info('SECURITY', f"Extension ID '{ext_id}' allowed via VORTEX_DEV_ALLOW_ANY_EXTENSION.")
         return True
 
     allowed_file = os.path.join(os.getcwd(), 'allowed_extensions.txt')
     if not os.path.exists(allowed_file):
-        print(f"[SECURITY BLOCK] No allowed_extensions.txt found. Extension ID '{ext_id}' denied.")
+        logger.warning('SECURITY', f"No allowed_extensions.txt found. Extension ID '{ext_id}' denied.")
         return False
 
     try:
@@ -48,11 +49,11 @@ def is_extension_allowed(ext_id):
             lines = [line.split('#')[0].strip() for line in f.read().splitlines()]
             allowed_ids = {line for line in lines if line}
     except Exception as e:
-        print(f"[SECURITY BLOCK] Error reading allowed_extensions.txt: {e}. Denying extension ID '{ext_id}'.")
+        logger.warning('SECURITY', f"Error reading allowed_extensions.txt: {e}. Denying extension ID '{ext_id}'.")
         return False
 
     if not allowed_ids:
-        print(f"[SECURITY BLOCK] allowed_extensions.txt is empty. Extension ID '{ext_id}' denied.")
+        logger.warning('SECURITY', f"allowed_extensions.txt is empty. Extension ID '{ext_id}' denied.")
         return False
 
     if ext_id in allowed_ids:
@@ -77,7 +78,7 @@ def verify_vortex_token():
                 return "Unauthorized Extension ID", 403
             
         token = request.headers.get('X-Vortex-Token')
-        if request.path in ['/api/proxy-image', '/api/proxy', '/api/serve-file']:
+        if request.path in ['/api/proxy-image', '/api/proxy', '/api/serve-file', '/api/progress-stream']:
             token = token or request.args.get('token')
         if not token or token != vortex_token:
             return "Forbidden", 403
@@ -113,11 +114,11 @@ def download_watchdog():
                     stalled_filenames.append((filename, info["socket"]))
                     
         for filename, sock in stalled_filenames:
-            print(f"[WATCHDOG] Closing stalled socket for: {filename}", flush=True)
+            logger.warning('WATCHDOG', f"Closing stalled socket for: {filename}")
             try:
                 sock.close()
             except Exception as e:
-                print(f"[WATCHDOG] Error closing socket: {e}", flush=True)
+                logger.error('WATCHDOG', f"Error closing socket: {e}")
                 
             # Remove from ACTIVE_SOCKETS so we don't try to close it again
             with ACTIVE_SOCKETS_LOCK:
@@ -311,7 +312,7 @@ def analyze_html():
             "default_dir": default_dir
         })
     except Exception as e:
-        print(f"[ERROR] Falha ao analisar HTML: {e}")
+        logger.error('ANALYZE', f"Falha ao analisar HTML: {e}")
         return jsonify({"error": f"Erro interno ao analisar o arquivo HTML."}), 500
 
 @app.route('/api/analyze', methods=['POST'])
@@ -326,7 +327,7 @@ def analyze():
     if cookies_path and not resolved_cookies:
         return jsonify({"error": "Caminho de cookies inválido."}), 400
         
-    print(f"\n[ANALYZE] URL solicitada: {url}", flush=True)
+    logger.info('ANALYZE', f"URL solicitada: {url}")
     
     if not url:
         return jsonify({"error": "Por favor, insira uma URL válida."}), 400
@@ -339,7 +340,7 @@ def analyze():
     if url in ANALYZE_CACHE:
         cached = ANALYZE_CACHE[url]
         if current_time - cached["timestamp"] < CACHE_TTL:
-            print(f"[ANALYZE] Retornando dados do Cache para a URL: {url}", flush=True)
+            logger.info('ANALYZE', f"Retornando dados do Cache para a URL: {url}")
             return jsonify({
                 "title": cached["title"],
                 "media": cached["media"],
@@ -397,7 +398,7 @@ def analyze():
                     "base_dir": base_dir
                 })
         except Exception as e:
-            print("HEAD check failed, fallback to scrapers:", str(e))
+            logger.warning('ANALYZE', f"HEAD check failed, fallback to scrapers: {e}")
 
         # 3. Use modular extractors
         media_items, album_title = extract_media(url, resolved_cookies)
@@ -440,9 +441,9 @@ def analyze():
             original_source = item.get('source', 'Web')
             item['source'] = f"{original_source} ({sz_str})"
 
-        print(f"[ANALYZE] Retornando {len(media_items)} midias filtradas e com tamanho checado:", flush=True)
+        logger.info('ANALYZE', f"Retornando {len(media_items)} midias filtradas e com tamanho checado")
         for m in media_items:
-            print(f"  - ID={m['id']}, Type={m['type']}, Source={m['source']}, Filename={m['filename']}", flush=True)
+            logger.debug('ANALYZE', f"  ID={m['id']}, Type={m['type']}, Source={m['source']}, Filename={m['filename']}")
 
         album_title = album_title or "Mídias da Página"
         default_dir = get_default_download_dir(album_title)
@@ -604,7 +605,7 @@ def download_ytdl_worker(item, download_dir, cookies_path=None):
             if attempt == max_retries - 1:
                 raise e
             else:
-                print(f"[RETRY] yt-dlp attempt {attempt+1} failed for {filename}: {e}. Retrying in 2s...")
+                logger.warning('DOWNLOAD', f"yt-dlp attempt {attempt+1} failed for {filename}: {e}. Retrying in 2s...")
                 time.sleep(2)
 
 
@@ -640,7 +641,7 @@ def download_file_worker(item, download_dir, album_url, cookies_path=None):
             cj.load(ignore_discard=True, ignore_expires=True)
             session.cookies = cj
         except Exception as e:
-            print("Failed to load cookies:", str(e))
+            logger.warning('DOWNLOAD', f"Failed to load cookies: {e}")
             
     if os.path.exists(filepath):
         try:
@@ -776,7 +777,7 @@ def download_file_worker(item, download_dir, album_url, cookies_path=None):
             if attempt == max_retries - 1:
                 raise e
             else:
-                print(f"[RETRY] Attempt {attempt+1} failed for {filename}: {e}. Retrying in 2s...")
+                logger.warning('DOWNLOAD', f"Attempt {attempt+1} failed for {filename}: {e}. Retrying in 2s...")
                 time.sleep(2)
 
 
@@ -809,7 +810,7 @@ def download_item_wrapper(item, download_dir, album_url, cookies_path=None):
             if filename in download_state["active_downloads"]:
                 del download_state["active_downloads"][filename]
     except Exception as e:
-        print(f"Error downloading {filename}: {str(e)}")
+        logger.error('DOWNLOAD', f"Error downloading {filename}: {e}")
         with ACTIVE_SOCKETS_LOCK:
             if filename in ACTIVE_SOCKETS:
                 del ACTIVE_SOCKETS[filename]
@@ -852,14 +853,14 @@ def download_manager_thread(items, download_dir, album_url, cookies_path=None, c
             "cancelled_files": []
         })
     
-    print(f"[DOWNLOAD] Iniciando com concorrência de {concurrency} downloads simultâneos.", flush=True)
+    logger.info('DOWNLOAD', f"Iniciando com concorrência de {concurrency} downloads simultâneos.")
     with ThreadPoolExecutor(max_workers=concurrency) as local_pool:
         futures = [local_pool.submit(download_item_wrapper, item, download_dir, album_url, cookies_path) for item in items]
         for future in futures:
             try:
                 future.result()
             except Exception as e:
-                print(f"Future error: {str(e)}")
+                logger.error('DOWNLOAD', f"Future error: {e}")
             
     with download_lock:
         if download_state["status"] != "idle":
@@ -900,7 +901,7 @@ def browse_folder():
         if selected_dir:
             return jsonify({"directory": os.path.normpath(selected_dir)})
     except Exception as e:
-        print("Folder browser error:", str(e))
+        logger.error('BROWSER', f"Folder browser error: {e}")
         
     return jsonify({"directory": ""})
 
@@ -940,7 +941,7 @@ def browse_file():
 
             return jsonify({"cookie_id": cookie_id})
     except Exception as e:
-        print("File browser error:", str(e))
+        logger.error('BROWSER', f"File browser error: {e}")
 
     return jsonify({"cookie_id": ""})
 
@@ -992,10 +993,10 @@ def upload_cookies():
 def log_error():
     """Telemetry endpoint that prints browser JavaScript errors to Flask console logs."""
     data = request.json
-    print(f"\n[BROWSER JS ERROR] {data.get('error')}", flush=True)
-    print(f"  File: {data.get('filename')} : {data.get('lineno')}:{data.get('colno')}", flush=True)
+    logger.error('BROWSER', f"JS Error: {data.get('error')}")
+    logger.error('BROWSER', f"  File: {data.get('filename')} : {data.get('lineno')}:{data.get('colno')}")
     if data.get('stack'):
-        print(f"  Stack: {data.get('stack')}", flush=True)
+        logger.error('BROWSER', f"  Stack: {data.get('stack')}")
     return jsonify({"success": True})
 
 @app.route('/api/proxy')
@@ -1178,7 +1179,7 @@ def install_ffmpeg_worker():
             ffmpeg_install_state["status"] = "completed"
             
     except Exception as e:
-        print("FFmpeg installation failed:", str(e))
+        logger.error('FFMPEG', f"FFmpeg installation failed: {e}")
         if os.path.exists(zip_path):
             try:
                 os.remove(zip_path)
@@ -1240,7 +1241,7 @@ def convert_to_mp3_worker(input_path):
         else:
             raise Exception(result.stderr or "Erro desconhecido no ffmpeg")
     except Exception as e:
-        print("MP3 conversion failed:", str(e))
+        logger.error('CONVERT', f"MP3 conversion failed: {e}")
         with conversion_lock:
             conversion_state.update({"status": "error", "error": str(e), "filename": filename})
 
@@ -1268,6 +1269,21 @@ def get_status():
             "error_message": download_state["error_message"],
             "local_ip": get_local_ip()
         })
+
+@app.route('/api/progress-stream')
+def progress_stream():
+    """SSE endpoint that streams download_state as JSON every 500ms."""
+    def generate():
+        while True:
+            with download_lock:
+                state = dict(download_state)
+            yield f"data: {json.dumps(state)}\n\n"
+            if state["status"] == "idle" and not state.get("active_downloads"):
+                yield f"data: {json.dumps({'status': 'completed'})}\n\n"
+                break
+            time.sleep(0.5)
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 @app.route('/api/ffmpeg/status', methods=['GET'])
 def ffmpeg_status():
@@ -1419,13 +1435,13 @@ def update_ytdl():
             timeout=60
         )
         if result.returncode == 0:
-            print("yt-dlp updated successfully:", result.stdout)
+            logger.info('UPDATE', f"yt-dlp updated successfully: {result.stdout}")
             return jsonify({"success": True, "message": "yt-dlp atualizado com sucesso!"})
         else:
-            print("yt-dlp update failed:", result.stderr)
+            logger.error('UPDATE', f"yt-dlp update failed: {result.stderr}")
             return jsonify({"success": False, "error": result.stderr or "Erro desconhecido ao rodar o pip."}), 500
     except Exception as e:
-        print("yt-dlp update exception:", str(e))
+        logger.error('UPDATE', f"yt-dlp update exception: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/history', methods=['GET'])
@@ -1519,6 +1535,65 @@ def verify_file():
     ok, message = verify_download(filepath, expected_size)
     return jsonify({"valid": ok, "message": message, "size": os.path.getsize(filepath)})
 
+# --- Proxy Configuration ---
+
+PROXY_CONFIG_FILE = os.path.join(os.getcwd(), 'proxy_config.json')
+
+def _load_proxy_config():
+    try:
+        if os.path.exists(PROXY_CONFIG_FILE):
+            with open(PROXY_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def _save_proxy_config(config):
+    with open(PROXY_CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+
+@app.route('/api/proxy-config', methods=['GET'])
+@rate_limit(default_limiter)
+def get_proxy_config():
+    """Return current proxy settings."""
+    config = _load_proxy_config()
+    return jsonify({
+        "enabled": config.get("enabled", False),
+        "proxy_url": config.get("proxy_url", ""),
+        "type": config.get("type", "http")
+    })
+
+@app.route('/api/proxy-config', methods=['POST'])
+@rate_limit(default_limiter)
+def set_proxy_config():
+    """Save proxy settings to proxy_config.json."""
+    data = request.json or {}
+    proxy_url = data.get('proxy_url', '').strip()
+    enabled = data.get('enabled', False)
+    proxy_type = data.get('type', 'http')
+
+    if enabled and not proxy_url:
+        return jsonify({"error": "URL do proxy é obrigatória quando habilitado."}), 400
+
+    if enabled and proxy_url:
+        if not proxy_url.startswith(('http://', 'https://', 'socks5://', 'socks4://')):
+            return jsonify({"error": "Formato de proxy inválido. Use http://, https://, socks5:// ou socks4://"}), 400
+
+    config = {
+        "enabled": enabled,
+        "proxy_url": proxy_url,
+        "type": proxy_type
+    }
+    _save_proxy_config(config)
+    return jsonify({"success": True, "message": "Configuração de proxy salva."})
+
+def _get_active_proxy():
+    """Return proxy URL if proxy is configured and enabled, else None."""
+    config = _load_proxy_config()
+    if config.get("enabled") and config.get("proxy_url"):
+        return config["proxy_url"]
+    return None
+
 if __name__ == '__main__':
     import webbrowser
     from threading import Timer
@@ -1530,10 +1605,10 @@ if __name__ == '__main__':
         webbrowser.open_new("http://127.0.0.1:8080")
         
     Timer(1.5, open_browser).start()
-    print("\n" + "="*60)
-    print("Vortex iniciado com sucesso!")
-    print("Acesse no PC: http://127.0.0.1:8080")
-    print(f"Acesse no Celular (na mesma rede Wi-Fi): http://{local_ip}:8080")
-    print("="*60 + "\n")
+    logger.info('VORTEX', "="*60)
+    logger.info('VORTEX', "Vortex iniciado com sucesso!")
+    logger.info('VORTEX', "Acesse no PC: http://127.0.0.1:8080")
+    logger.info('VORTEX', f"Acesse no Celular (na mesma rede Wi-Fi): http://{local_ip}:8080")
+    logger.info('VORTEX', "="*60)
     
     app.run(host='127.0.0.1', port=8080, debug=False)

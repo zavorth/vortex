@@ -1,10 +1,15 @@
-"""Simple in-memory rate limiter for Flask routes."""
+"""Simple in-memory rate limiter with JSON persistence."""
 
+import json
+import os
 import time
 from functools import wraps
 from threading import Lock
 
 from flask import request, jsonify
+
+_STATE_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'rate_limiter_state.json')
+_SYNC_INTERVAL = 30  # seconds between disk syncs
 
 
 class RateLimiter:
@@ -15,25 +20,50 @@ class RateLimiter:
         self.window_seconds = window_seconds
         self._hits = {}  # ip -> [timestamps]
         self._lock = Lock()
+        self._last_sync = 0.0
+        self._load_state()
 
-    def _cleanup(self, ip):
+    def _load_state(self):
+        """Load persisted hits from JSON file on startup."""
+        try:
+            if os.path.exists(_STATE_FILE):
+                with open(_STATE_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                now = time.time()
+                cutoff = now - self.window_seconds
+                for ip, timestamps in data.items():
+                    valid = [t for t in timestamps if t > cutoff]
+                    if valid:
+                        self._hits[ip] = valid
+        except Exception:
+            pass
+
+    def _save_state(self):
+        """Persist current hits to JSON file."""
         now = time.time()
-        cutoff = now - self.window_seconds
-        self._hits[ip] = [t for t in self._hits[ip] if t > cutoff]
-        if not self._hits[ip]:
-            del self._hits[ip]
+        if now - self._last_sync < _SYNC_INTERVAL:
+            return
+        self._last_sync = now
+        try:
+            snapshot = {ip: list(ts) for ip, ts in self._hits.items()}
+            tmp = _STATE_FILE + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(snapshot, f)
+            os.replace(tmp, _STATE_FILE)
+        except Exception:
+            pass
 
     def is_allowed(self, ip):
         now = time.time()
         with self._lock:
             if ip not in self._hits:
                 self._hits[ip] = []
-            # Prune expired entries inline (no separate cleanup that deletes the key)
             cutoff = now - self.window_seconds
             self._hits[ip] = [t for t in self._hits[ip] if t > cutoff]
             if len(self._hits[ip]) >= self.max_requests:
                 return False
             self._hits[ip].append(now)
+            self._save_state()
             return True
 
 

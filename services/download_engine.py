@@ -54,29 +54,35 @@ def verify_download(filepath, expected_size=None):
     return True, "OK"
 
 
-def get_file_size(url, headers=None, timeout=10):
+def get_file_size(url, headers=None, timeout=10, proxy=None):
     """Get file size via HEAD request without downloading."""
     try:
         h = headers or {}
-        r = requests.head(url, headers=h, timeout=timeout, allow_redirects=True)
+        proxies = {'http': proxy, 'https': proxy} if proxy else None
+        r = requests.head(url, headers=h, timeout=timeout, allow_redirects=True, proxies=proxies)
         return int(r.headers.get('content-length', 0))
     except Exception:
         return 0
 
 
 def download_with_resume(url, filepath, headers=None, progress_callback=None,
-                         max_retries=MAX_RETRIES, cookies=None):
+                         max_retries=MAX_RETRIES, cookies=None, proxy=None):
     """
     Download a file with resume support and retry logic.
     Returns (success, bytes_downloaded, error_message).
+    proxy: optional proxy URL (e.g. 'socks5://user:pass@host:port' or 'http://host:port')
     """
     os.makedirs(os.path.dirname(filepath) or '.', exist_ok=True)
+
+    proxies = None
+    if proxy:
+        proxies = {'http': proxy, 'https': proxy}
 
     downloaded = 0
     if os.path.exists(filepath):
         downloaded = os.path.getsize(filepath)
 
-    total_size = get_file_size(url, headers)
+    total_size = get_file_size(url, headers, proxy=proxy)
 
     for attempt in range(max_retries):
         try:
@@ -88,7 +94,7 @@ def download_with_resume(url, filepath, headers=None, progress_callback=None,
             if cookies:
                 session.cookies = cookies
 
-            r = session.get(url, headers=req_headers, stream=True, timeout=30, allow_redirects=True)
+            r = session.get(url, headers=req_headers, stream=True, timeout=30, allow_redirects=True, proxies=proxies)
 
             if r.status_code == 416:
                 # Range not satisfiable — file already complete
@@ -146,26 +152,30 @@ def download_with_resume(url, filepath, headers=None, progress_callback=None,
 
 
 def download_parallel(url, filepath, headers=None, progress_callback=None,
-                      num_chunks=MAX_CHUNKS, cookies=None):
+                      num_chunks=MAX_CHUNKS, cookies=None, proxy=None):
     """
     Download a file using parallel chunks for faster speed.
     Falls back to sequential if server doesn't support Range requests.
+    proxy: optional proxy URL (e.g. 'socks5://user:pass@host:port' or 'http://host:port')
     """
-    total_size = get_file_size(url, headers)
+    proxies = None
+    if proxy:
+        proxies = {'http': proxy, 'https': proxy}
+
+    total_size = get_file_size(url, headers, proxy=proxy)
 
     if total_size <= 0 or total_size < CHUNK_SIZE * 2:
-        # Too small for parallel or unknown size — use sequential
-        return download_with_resume(url, filepath, headers, progress_callback, cookies=cookies)
+        return download_with_resume(url, filepath, headers, progress_callback, cookies=cookies, proxy=proxy)
 
     # Check if server supports Range requests
     try:
         test_headers = (headers or {}).copy()
         test_headers['Range'] = 'bytes=0-1'
-        r = requests.head(url, headers=test_headers, timeout=10, allow_redirects=True)
+        r = requests.head(url, headers=test_headers, timeout=10, allow_redirects=True, proxies=proxies)
         if r.status_code not in (200, 206):
-            return download_with_resume(url, filepath, headers, progress_callback, cookies=cookies)
+            return download_with_resume(url, filepath, headers, progress_callback, cookies=cookies, proxy=proxy)
     except Exception:
-        return download_with_resume(url, filepath, headers, progress_callback, cookies=cookies)
+        return download_with_resume(url, filepath, headers, progress_callback, cookies=cookies, proxy=proxy)
 
     os.makedirs(os.path.dirname(filepath) or '.', exist_ok=True)
 
@@ -189,7 +199,7 @@ def download_parallel(url, filepath, headers=None, progress_callback=None,
             if cookies:
                 session.cookies = cookies
 
-            r = session.get(url, headers=req_headers, stream=True, timeout=30)
+            r = session.get(url, headers=req_headers, stream=True, timeout=30, proxies=proxies)
             if r.status_code not in (200, 206):
                 return False
 
@@ -220,7 +230,7 @@ def download_parallel(url, filepath, headers=None, progress_callback=None,
             if os.path.exists(chunk_file):
                 os.remove(chunk_file)
         # Fallback to sequential
-        return download_with_resume(url, filepath, headers, progress_callback, cookies=cookies)
+        return download_with_resume(url, filepath, headers, progress_callback, cookies=cookies, proxy=proxy)
 
     # Merge chunks
     try:

@@ -1338,20 +1338,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 7. Status Polling loop
+    // 7. Status Polling loop (SSE with fallback)
+    let sseConnection = null;
+
     function startProgressPolling() {
-        if (statusIntervalId) clearInterval(statusIntervalId);
-        pollStatus(); 
-        statusIntervalId = setInterval(pollStatus, 500);
+        if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; }
+        if (sseConnection) { sseConnection.close(); sseConnection = null; }
+
+        try {
+            const sseUrl = addTokenToUrl('/api/progress-stream');
+            sseConnection = new EventSource(sseUrl);
+            sseConnection.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    processStatusUpdate(data);
+                } catch (e) {
+                    console.error("Erro ao processar SSE:", e);
+                }
+            };
+            sseConnection.onerror = () => {
+                // Fallback to polling if SSE fails
+                sseConnection.close();
+                sseConnection = null;
+                console.warn("SSE falhou, usando polling como fallback.");
+                pollStatus();
+                statusIntervalId = setInterval(pollStatus, 500);
+            };
+        } catch (e) {
+            // EventSource not supported or other error, use polling
+            pollStatus();
+            statusIntervalId = setInterval(pollStatus, 500);
+        }
     }
 
-    async function pollStatus() {
-        try {
-            const response = await fetch('/api/status');
-            const data = await response.json();
-
-            if (!response.ok) throw new Error("Erro na rede.");
-
+    function processStatusUpdate(data) {
             const activeFilenames = Object.keys(data.active_downloads);
 
             // Render individual progress overlays on cards in the grid
@@ -1359,10 +1379,10 @@ document.addEventListener('DOMContentLoaded', () => {
             cards.forEach(card => {
                 const filename = card.dataset.filename;
                 if (!filename) return;
-                
+
                 if (activeFilenames.includes(filename)) {
                     const file = data.active_downloads[filename];
-                    
+
                     let overlay = card.querySelector('.card-progress-overlay');
                     if (!overlay) {
                         overlay = document.createElement('div');
@@ -1376,7 +1396,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             </button>
                         `;
                         card.appendChild(overlay);
-                        
+
                         const cancelBtn = overlay.querySelector('.card-progress-cancel');
                         if (cancelBtn) {
                             cancelBtn.addEventListener('click', async (e) => {
@@ -1405,7 +1425,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             });
                         }
                     }
-                    
+
                     const pctText = overlay.querySelector('.card-progress-text');
                     const speedText = overlay.querySelector('.card-progress-speed');
                     if (pctText && pctText.textContent !== "Cancelado") {
@@ -1417,7 +1437,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (overlay && !overlay.querySelector('.fa-circle-check')) {
                         overlay.remove();
                     }
-                    
+
                     // Update actions dynamically if file just finished downloading
                     if (albumData) {
                         const item = albumData.media.find(m => m.filename === filename);
@@ -1436,7 +1456,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         const file = data.active_downloads[filename];
                         updateInlineProgressUI(filename, file.progress, file.speed);
                     } else {
-                        // File finished downloading
                         removeInlineProgressUI(filename, true);
                         inlineDownloads.delete(filename);
                     }
@@ -1446,16 +1465,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const isBatchActive = !progressPanel.classList.contains('hidden');
 
             if (isBatchActive) {
-                // Update UI elements
                 progressFileCount.textContent = `${data.downloaded_files} / ${data.total_files} concluídos`;
                 overallProgressBar.style.width = `${data.overall_progress}%`;
                 overallPercentage.textContent = data.overall_progress;
 
-                // Render active rows
                 activeFilesList.innerHTML = '';
-                
+
                 activeFilenames.forEach(filename => {
-                    if (inlineDownloads.has(filename)) return; // Skip showing inline downloads in the main list
+                    if (inlineDownloads.has(filename)) return;
                     const file = data.active_downloads[filename];
                     const row = document.createElement('div');
                     row.className = 'download-row';
@@ -1477,57 +1494,61 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Handle completion states
             if (data.status === 'completed') {
-                clearInterval(statusIntervalId);
-                statusIntervalId = null;
-                
+                if (sseConnection) { sseConnection.close(); sseConnection = null; }
+                if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; }
+
                 if (isBatchActive) {
                     progressPanel.classList.add('hidden');
                     modalFolderPath.textContent = data.download_dir;
                     completionModal.classList.remove('hidden');
                 }
-                
-                // Clear any remaining inline downloads
+
                 inlineDownloads.forEach(filename => {
                     removeInlineProgressUI(filename, true);
                 });
                 inlineDownloads.clear();
-                
+
                 btnDownloadStart.disabled = false;
             } else if (data.status === 'error') {
-                clearInterval(statusIntervalId);
-                statusIntervalId = null;
-                
+                if (sseConnection) { sseConnection.close(); sseConnection = null; }
+                if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; }
+
                 if (isBatchActive) {
                     progressPanel.classList.add('hidden');
                     mediaDashboard.classList.remove('hidden');
                 }
                 showError(data.error_message || "Erro no download.");
-                
-                // Clear inline downloads
+
                 inlineDownloads.forEach(filename => {
                     removeInlineProgressUI(filename, false);
                 });
                 inlineDownloads.clear();
-                
+
                 btnDownloadStart.disabled = false;
             } else if (data.status === 'idle') {
-                clearInterval(statusIntervalId);
-                statusIntervalId = null;
-                
+                if (sseConnection) { sseConnection.close(); sseConnection = null; }
+                if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; }
+
                 if (isBatchActive) {
                     progressPanel.classList.add('hidden');
                     mediaDashboard.classList.remove('hidden');
                 }
-                
-                // Clear inline downloads
+
                 inlineDownloads.forEach(filename => {
                     removeInlineProgressUI(filename, false);
                 });
                 inlineDownloads.clear();
-                
+
                 btnDownloadStart.disabled = (selectedMediaIds.size === 0);
             }
+    }
 
+    async function pollStatus() {
+        try {
+            const response = await fetch('/api/status');
+            const data = await response.json();
+            if (!response.ok) throw new Error("Erro na rede.");
+            processStatusUpdate(data);
         } catch (err) {
             console.error("Erro ao obter progresso:", err);
         }
@@ -1536,16 +1557,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // 8. Cancel download thread
     btnCancel.addEventListener('click', async () => {
         if (!confirm("Tem certeza que deseja cancelar os downloads atuais?")) return;
-        
+
         try {
             await fetch('/api/cancel', { method: 'POST' });
-            if (statusIntervalId) clearInterval(statusIntervalId);
-            
+            if (sseConnection) { sseConnection.close(); sseConnection = null; }
+            if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; }
+
             // Clear inline downloads and overlays
             inlineDownloads.clear();
             const overlays = document.querySelectorAll('.card-progress-overlay');
             overlays.forEach(overlay => overlay.remove());
-            
+
             progressPanel.classList.add('hidden');
             mediaDashboard.classList.remove('hidden');
             btnDownloadStart.disabled = false;

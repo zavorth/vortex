@@ -69,11 +69,12 @@ def is_safe_redirect(target_url, original_url=None):
     return True
 
 
-def proxy_fetch(url, headers=None, timeout=15, stream=True, allow_redirects=False, cookies=None):
+def proxy_fetch(url, headers=None, timeout=15, stream=True, allow_redirects=False, cookies=None, proxy=None):
     """
     Fetch a URL through the proxy with safety controls.
     - Manual redirect following with per-redirect validation.
     - Response size cap.
+    - proxy: optional proxy URL (e.g. 'socks5://user:pass@host:port' or 'http://host:port')
     - Returns (response, error_tuple) where error_tuple is None on success.
     """
     if not is_safe_url(url):
@@ -83,13 +84,17 @@ def proxy_fetch(url, headers=None, timeout=15, stream=True, allow_redirects=Fals
     if cookies:
         session.cookies = cookies
 
+    proxies = None
+    if proxy:
+        proxies = {'http': proxy, 'https': proxy}
+
     current_url = url
     redirect_count = 0
     max_redirects = 10
 
     while True:
         try:
-            r = session.get(current_url, headers=headers, timeout=timeout, stream=stream, allow_redirects=False)
+            r = session.get(current_url, headers=headers, timeout=timeout, stream=stream, allow_redirects=False, proxies=proxies)
         except requests.exceptions.RequestException as e:
             return None, (f"Proxy error: {str(e)}", 502)
 

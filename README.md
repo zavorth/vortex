@@ -60,17 +60,23 @@ A extensão (`extension/popup.js`) **não** envia dados de cookies ou paths para
 
 Nenhuma alteração na extensão é necessária para a segurança de cookies.
 
-### Rodando com HTTPS (Produção)
-Se o app for exposto na rede (não apenas local), configure HTTPS via reverse proxy:
+### Produção e HTTPS
 
-**Opção 1: nginx (recomendado)**
+Se o app for exposto na rede (não apenas local), configure HTTPS via reverse proxy. O Flask NÃO deve servir HTTPS diretamente — use um reverse proxy.
+
+**nginx com SSL (recomendado)**
+
 ```nginx
 server {
-    listen 443 ssl;
+    listen 443 ssl http2;
     server_name vortex.local;
 
-    ssl_certificate     /etc/ssl/certs/vortex.pem;
-    ssl_certificate_key /etc/ssl/private/vortex.key;
+    ssl_certificate     /etc/letsencrypt/live/vortex.local/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/vortex.local/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -83,25 +89,66 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+
+        # Timeouts para downloads grandes
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
     }
 }
+
+# Redirect HTTP to HTTPS
+server {
+    listen 80;
+    server_name vortex.local;
+    return 301 https://$host$request_uri;
+}
 ```
+
+**Let's Encrypt (SSL gratuito)**
+
+Para obter certificados SSL gratuitos via Let's Encrypt:
+
+```bash
+# Instalar certbot
+sudo apt install certbot python3-certbot-nginx
+
+# Obter certificado (nginx precisa estar rodando na porta 80)
+sudo certbot --nginx -d vortex.local
+
+# Auto-renovação (verifica duas vezes ao dia)
+sudo systemctl status certbot.timer
+```
+
+Os certificados são renovados automaticamente. O caminho dos certificados no config acima (`/etc/letsencrypt/live/vortex.local/`) é o padrão do certbot.
 
 **Opção 2: Caddy (mais simples)**
 ```
 vortex.local {
-    tls /etc/ssl/certs/vortex.pem /etc/ssl/private/vortex.key
-    proxy / 127.0.0.1:8080
+    reverse_proxy 127.0.0.1:8080
 }
 ```
+Caddy gera e renova certificados automaticamente.
 
 **Opção 3: ngrok (testes rápidos)**
 ```bash
 ngrok http 8080
 ```
-Isso gera uma URL HTTPS pública temporária.
 
 > **Importante:** Ao usar HTTPS, atualize o `host_permissions` no `manifest.json` da extensão para incluir o domínio HTTPS.
+
+### Variáveis de Ambiente
+
+| Variável | Descrição | Padrão |
+|---|---|---|
+| `VORTEX_LOG_LEVEL` | Nível de log (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
+| `VORTEX_LOG_FILE` | Caminho do arquivo de log (vazio = apenas console) | vazio |
+
+```bash
+# Exemplo: log em arquivo com nível DEBUG
+export VORTEX_LOG_LEVEL=DEBUG
+export VORTEX_LOG_FILE=/var/log/vortex.log
+python app.py
+```
 
 ## Rodando Testes
 
@@ -123,6 +170,7 @@ vortex/
 ├── app.py                  # Servidor Flask principal
 ├── services/
 │   ├── proxy_safety.py     # Validação de URLs e proxy seguro
+│   ├── download_engine.py  # Motor de downloads com resume/paralelo
 │   ├── file_safety.py      # Validação de paths e cookies
 │   └── rate_limiter.py     # Rate limiting por IP
 ├── extractors/             # Plugins de extração de mídia
@@ -131,6 +179,7 @@ vortex/
 ├── templates/              # Templates HTML
 ├── saved_cookies/          # Cookies importados (gitignored)
 ├── allowed_extensions.txt  # IDs de extensões permitidas
+├── proxy_config.json       # Configuração de proxy (gerado automaticamente)
 ├── test_security.py        # Testes de segurança
 └── requirements.txt        # Dependências Python
 ```
