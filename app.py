@@ -9,6 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Lock, Thread
 from flask import Flask, request, jsonify, render_template, Response
 from extractors import extract_media, GenericExtractor
+from services.proxy_safety import is_safe_url, is_safe_redirect, proxy_fetch, PROXY_MAX_RESPONSE_BYTES
+from services.file_safety import is_safe_cookie_path, resolve_cookie_path, is_safe_path, COOKIES_DIR_NAME
 import requests
 from bs4 import BeautifulSoup
 
@@ -19,78 +21,37 @@ socket.setdefaulttimeout(15.0)
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 vortex_token = secrets.token_hex(16)
-import ipaddress
 
-def is_safe_url(url):
-    """Enforces SSRF protection by resolving hostnames and validating that the resolved IPs are public."""
-    if not url:
-        return False
-    try:
-        parsed = urllib.parse.urlparse(url)
-        if parsed.scheme not in ('http', 'https'):
-            return False
-            
-        hostname = parsed.hostname
-        if not hostname:
-            return False
-            
-        # Resolve hostname to IP addresses
-        addr_info = socket.getaddrinfo(hostname, None)
-        for family, _, _, _, sockaddr in addr_info:
-            ip_str = sockaddr[0]
-            ip_obj = ipaddress.ip_address(ip_str)
-            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified:
-                print(f"[SECURITY BLOCK] SSRF protection blocked access to local/private IP '{ip_str}' resolved from '{hostname}'")
-                return False
-        return True
-    except Exception as e:
-        print(f"[SECURITY WARNING] Failed to validate URL '{url}': {e}")
-        return False
 
 def is_extension_allowed(ext_id):
-    """Checks if a given Chrome extension ID is permitted. Configurable via allowed_extensions.txt."""
+    """Checks if a given Chrome extension ID is permitted. Fail-closed by default."""
+    # Dev bypass: only via explicit environment variable
+    if os.environ.get('VORTEX_DEV_ALLOW_ANY_EXTENSION', '').lower() == 'true':
+        print(f"[SECURITY DEV] Extension ID '{ext_id}' allowed via VORTEX_DEV_ALLOW_ANY_EXTENSION.")
+        return True
+
     allowed_file = os.path.join(os.getcwd(), 'allowed_extensions.txt')
     if not os.path.exists(allowed_file):
-        try:
-            with open(allowed_file, 'w', encoding='utf-8') as f:
-                f.write("# Adicione os IDs das extensoes do Chrome permitidas abaixo (um por linha):\n")
-                f.write("# Exemplo: kmgipnklamfkmlclbmn...\n")
-        except Exception:
-            pass
-        print(f"[SECURITY WARNING] Extension ID '{ext_id}' allowed. Create 'allowed_extensions.txt' to lock this down.")
-        return True
-        
+        print(f"[SECURITY BLOCK] No allowed_extensions.txt found. Extension ID '{ext_id}' denied.")
+        return False
+
     try:
         with open(allowed_file, 'r', encoding='utf-8') as f:
             lines = [line.split('#')[0].strip() for line in f.read().splitlines()]
             allowed_ids = {line for line in lines if line}
-        
-        if not allowed_ids:
-            print(f"[SECURITY WARNING] Extension ID '{ext_id}' allowed. Add it to 'allowed_extensions.txt' to enforce authorization.")
-            return True
-            
-        if ext_id in allowed_ids:
-            return True
-            
-        print(f"[SECURITY BLOCK] Blocked request from unauthorized extension ID: {ext_id}")
-        return False
     except Exception as e:
-        print(f"[ERROR] Error reading allowed_extensions.txt: {e}")
+        print(f"[SECURITY BLOCK] Error reading allowed_extensions.txt: {e}. Denying extension ID '{ext_id}'.")
+        return False
+
+    if not allowed_ids:
+        print(f"[SECURITY BLOCK] allowed_extensions.txt is empty. Extension ID '{ext_id}' denied.")
+        return False
+
+    if ext_id in allowed_ids:
         return True
 
-def is_safe_cookie_path(cookies_path):
-    """Prevents directory traversal attacks by validating that the cookie file has a .txt extension and no '..' elements."""
-    if not cookies_path:
-        return True
-    try:
-        norm_path = os.path.normpath(cookies_path)
-        if not norm_path.endswith('.txt'):
-            return False
-        if '..' in norm_path:
-            return False
-        return True
-    except Exception:
-        return False
+    print(f"[SECURITY BLOCK] Blocked request from unauthorized extension ID: {ext_id}")
+    return False
 
 @app.before_request
 def verify_vortex_token():
@@ -112,21 +73,6 @@ def verify_vortex_token():
             token = token or request.args.get('token')
         if not token or token != vortex_token:
             return "Forbidden", 403
-
-def is_safe_path(filepath, allowed_dirs):
-    """Enforces absolute path boundary checking to prevent directory traversal attacks."""
-    if not filepath:
-        return False
-    try:
-        filepath_norm = os.path.abspath(os.path.normpath(filepath)).lower()
-        for directory in allowed_dirs:
-            dir_norm = os.path.abspath(os.path.normpath(directory)).lower()
-            dir_boundary = dir_norm if dir_norm.endswith(os.sep) else dir_norm + os.sep
-            if filepath_norm == dir_norm or filepath_norm.startswith(dir_boundary):
-                return True
-    except Exception:
-        pass
-    return False
 
 # Global state for tracking downloads
 download_lock = Lock()
@@ -357,8 +303,10 @@ def analyze():
     data = request.json
     url = data.get('url', '').strip()
     cookies_path = data.get('cookies_path', '').strip()
-    
-    if cookies_path and not is_safe_cookie_path(cookies_path):
+
+    # Resolve cookie_id to actual path server-side
+    resolved_cookies = resolve_cookie_path(cookies_path)
+    if cookies_path and not resolved_cookies:
         return jsonify({"error": "Caminho de cookies inválido."}), 400
         
     print(f"\n[ANALYZE] URL solicitada: {url}", flush=True)
@@ -435,7 +383,7 @@ def analyze():
             print("HEAD check failed, fallback to scrapers:", str(e))
 
         # 3. Use modular extractors
-        media_items, album_title = extract_media(url, cookies_path)
+        media_items, album_title = extract_media(url, resolved_cookies)
         if not media_items:
             # Check if social media domain to provide helpful message
             is_social = any(domain in url.lower() for domain in ['x.com', 'twitter.com', 'instagram.com', 'tiktok.com', 'threads.net'])
@@ -511,31 +459,36 @@ def proxy_image():
     image_url = request.args.get('url')
     if not image_url:
         return "Missing url parameter", 400
-        
-    if not is_safe_url(image_url):
-        return "Forbidden target URL", 403
-        
+
     parsed = urllib.parse.urlparse(image_url)
     domain = parsed.netloc.lower()
-    
+
     if 'erome.com' in domain:
         referer = 'https://www.erome.com/'
     else:
         referer = f"{parsed.scheme}://{parsed.netloc}/"
-        
+
     headers = {
         'User-Agent': HEADERS['User-Agent'],
         'Referer': referer
     }
-    
+
+    r, error = proxy_fetch(image_url, headers=headers, timeout=8)
+    if error:
+        return error[0], error[1]
+
     try:
-        r = requests.get(image_url, headers=headers, timeout=8, stream=True)
         if r.status_code == 200:
             content_type = r.headers.get('content-type', 'image/jpeg')
-            return Response(r.raw.read(), mimetype=content_type)
+            # Read with size limit (10 MB for images)
+            data = r.raw.read(10 * 1024 * 1024)
+            r.close()
+            return Response(data, mimetype=content_type)
         else:
+            r.close()
             return f"Error fetching image: {r.status_code}", r.status_code
     except Exception as e:
+        r.close()
         return f"Proxy error: {str(e)}", 500
 
 def download_ytdl_worker(item, download_dir, cookies_path=None):
@@ -923,27 +876,43 @@ def browse_folder():
 
 @app.route('/api/browse-file', methods=['POST'])
 def browse_file():
-    """Opens a native Windows file selector dialog and returns the selected cookies file."""
+    """Opens a native Windows file selector dialog and copies the selected cookies file to saved_cookies/."""
     try:
         import tkinter as tk
         from tkinter import filedialog
-        
+
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)
-        
+
         selected_file = filedialog.askopenfilename(
             title="Selecione o arquivo de cookies",
             filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
         )
         root.destroy()
-        
+
         if selected_file:
-            return jsonify({"filepath": os.path.normpath(selected_file)})
+            # Validate the selected file
+            if not selected_file.endswith('.txt'):
+                return jsonify({"error": "Apenas arquivos .txt são permitidos."}), 400
+
+            import shutil
+            cookies_dir = os.path.join(os.getcwd(), COOKIES_DIR_NAME)
+            os.makedirs(cookies_dir, exist_ok=True)
+
+            # Generate a safe cookie_id from the original filename
+            basename = os.path.basename(selected_file)
+            safe_name = re.sub(r'[^a-zA-Z0-9._-]', '_', basename)
+            cookie_id = f"browse_{safe_name}"
+            dest_path = os.path.join(cookies_dir, cookie_id)
+
+            shutil.copy2(selected_file, dest_path)
+
+            return jsonify({"cookie_id": cookie_id})
     except Exception as e:
         print("File browser error:", str(e))
-        
-    return jsonify({"filepath": ""})
+
+    return jsonify({"cookie_id": ""})
 
 @app.route('/api/upload-cookies', methods=['POST'])
 def upload_cookies():
@@ -972,17 +941,17 @@ def upload_cookies():
         try:
             client_ip = request.remote_addr
             sanitized_ip = re.sub(r'[^a-zA-Z0-9]', '_', client_ip)
-            filename = f"cookies_{sanitized_ip}.txt"
-            
-            cookies_dir = os.path.join(os.getcwd(), 'saved_cookies')
+            cookie_id = f"cookies_{sanitized_ip}.txt"
+
+            cookies_dir = os.path.join(os.getcwd(), COOKIES_DIR_NAME)
             os.makedirs(cookies_dir, exist_ok=True)
-            filepath = os.path.join(cookies_dir, filename)
-            
+            filepath = os.path.join(cookies_dir, cookie_id)
+
             file.save(filepath)
-            
+
             return jsonify({
                 "success": True,
-                "filepath": os.path.normpath(filepath),
+                "cookie_id": cookie_id,
                 "message": "Cookies carregados com sucesso!"
             })
         except Exception as e:
@@ -1004,13 +973,10 @@ def proxy_media():
     url_val = request.args.get('url')
     download = request.args.get('download') == 'true'
     filename_val = request.args.get('filename')
-    
+
     if not url_val:
         return "Missing URL", 400
-        
-    if not is_safe_url(url_val):
-        return "Forbidden target URL", 403
-        
+
     parsed = urllib.parse.urlparse(url_val)
     if 'erome.com' in parsed.netloc:
         referer = 'https://www.erome.com/'
@@ -1020,42 +986,49 @@ def proxy_media():
         referer = 'https://www.pornhub.com/'
     else:
         referer = f"https://{parsed.netloc}/"
-        
+
     headers = {
         'User-Agent': HEADERS['User-Agent'],
         'Referer': referer
     }
-    
+
     # Forward the Range header from the browser to support seeking and progressive loading
     range_header = request.headers.get('Range')
     if range_header:
         headers['Range'] = range_header
-        
+
+    r, error = proxy_fetch(url_val, headers=headers, timeout=15)
+    if error:
+        return error[0], error[1]
+
     try:
-        r = requests.get(url_val, headers=headers, stream=True, timeout=15)
-        
         # Strip encoding and connection headers to avoid transfer conflicts
         excluded_headers = ['content-encoding', 'transfer-encoding', 'connection']
         resp_headers = [(name, value) for name, value in r.raw.headers.items()
                         if name.lower() not in excluded_headers]
         resp_headers.append(('Access-Control-Allow-Origin', '*'))
-        
+
         # Explicitly ensure Accept-Ranges is returned
         if not any(h[0].lower() == 'accept-ranges' for h in resp_headers):
             resp_headers.append(('Accept-Ranges', 'bytes'))
-            
+
         # If download is true, append Content-Disposition attachment header
         if download and filename_val:
             quoted_filename = urllib.parse.quote(filename_val)
             resp_headers.append(('Content-Disposition', f'attachment; filename="{quoted_filename}"; filename*=UTF-8\'\'{quoted_filename}'))
-            
+
         def generate():
+            bytes_sent = 0
             for chunk in r.iter_content(chunk_size=1024 * 64):
+                bytes_sent += len(chunk)
+                if bytes_sent > PROXY_MAX_RESPONSE_BYTES:
+                    r.close()
+                    break
                 yield chunk
-                
-        from flask import Response
+
         return Response(generate(), status=r.status_code, headers=resp_headers)
     except Exception as e:
+        r.close()
         return str(e), 500
 
 @app.route('/api/download', methods=['POST'])
@@ -1071,21 +1044,23 @@ def download():
     download_dir = data.get('download_dir', '').strip()
     album_url = data.get('album_url', '').strip()
     cookies_path = data.get('cookies_path', '').strip()
-    
-    if cookies_path and not is_safe_cookie_path(cookies_path):
+
+    # Resolve cookie_id to actual path server-side
+    resolved_cookies = resolve_cookie_path(cookies_path)
+    if cookies_path and not resolved_cookies:
         return jsonify({"error": "Caminho de cookies inválido."}), 400
-        
+
     concurrency = int(data.get('concurrency', 4))
     # Clamp to safe limits
     concurrency = max(1, min(concurrency, 12))
-    
+
     if not items:
         return jsonify({"error": "Nenhum arquivo selecionado para download."}), 400
-        
+
     if not download_dir:
         return jsonify({"error": "Caminho de download inválido."}), 400
 
-    thread = Thread(target=download_manager_thread, args=(items, download_dir, album_url, cookies_path, concurrency))
+    thread = Thread(target=download_manager_thread, args=(items, download_dir, album_url, resolved_cookies, concurrency))
     thread.daemon = True
     thread.start()
     
