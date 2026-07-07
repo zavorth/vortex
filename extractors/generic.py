@@ -82,9 +82,9 @@ class GenericExtractor(BaseExtractor):
             album_title = title_meta['content']
         if not album_title:
             album_title = soup.title.text.strip() if soup.title else "VortexMedia"
-            
+
         album_title = re.sub(r'[\\/*?:"<>|]', "", album_title).strip()[:100]
-        
+
         # 2.1. Extract HTML5 video tags
         videos = soup.find_all('video')
         for video in videos:
@@ -97,12 +97,12 @@ class GenericExtractor(BaseExtractor):
                         break
             elif video.get('src'):
                 video_url = video.get('src')
-                
+
             if video_url:
                 video_url = urllib.parse.urljoin(url, video_url)
                 filename = os.path.basename(urllib.parse.urlparse(video_url).path) or f"video_{media_counter}.mp4"
                 filename = re.sub(r'[\\/*?:"<>|]', "", filename).strip()[:100]
-                
+
                 if filename not in seen_filenames:
                     seen_filenames.add(filename)
                     poster = video.get('poster')
@@ -110,7 +110,7 @@ class GenericExtractor(BaseExtractor):
                         poster = urllib.parse.urljoin(url, poster)
                     else:
                         poster = "/static/video-placeholder.png"
-                        
+
                     media_items.append({
                         "id": f"media_{media_counter}",
                         "type": "video",
@@ -120,7 +120,7 @@ class GenericExtractor(BaseExtractor):
                         "source": "HTML5 Video"
                     })
                     media_counter += 1
-                    
+
         # 2.2. Extract HTML5 audio tags
         audios = soup.find_all('audio')
         for audio in audios:
@@ -133,12 +133,12 @@ class GenericExtractor(BaseExtractor):
                         break
             elif audio.get('src'):
                 audio_url = audio.get('src')
-                
+
             if audio_url:
                 audio_url = urllib.parse.urljoin(url, audio_url)
                 filename = os.path.basename(urllib.parse.urlparse(audio_url).path) or f"audio_{media_counter}.mp3"
                 filename = re.sub(r'[\\/*?:"<>|]', "", filename).strip()[:100]
-                
+
                 if filename not in seen_filenames:
                     seen_filenames.add(filename)
                     media_items.append({
@@ -150,7 +150,7 @@ class GenericExtractor(BaseExtractor):
                         "source": "HTML5 Audio"
                     })
                     media_counter += 1
-                    
+
         # 2.3. Extract Image tags
         images = soup.find_all('img')
         for img in images:
@@ -183,22 +183,22 @@ class GenericExtractor(BaseExtractor):
             src = best_src or img.get('data-src') or img.get('src')
             if not src:
                 continue
-                
+
             # Generic filter for generic layout elements
             if not any(kw in src.lower() for kw in ['avatar', 'logo', 'icon', 'button', 'sprite', 'banner', 'ad-', 'header', 'footer', 'nav', 'menu', 'favicon', 'user']):
                 img_url = urllib.parse.urljoin(url, src)
-                
+
                 # Clean WordPress/CMS image resize suffixes (e.g., -300x200.jpg -> .jpg) to download original sizes
                 img_url = re.sub(r'-\d+x\d+(\.[a-zA-Z0-9]+)$', r'\1', img_url)
-                
+
                 filename = os.path.basename(urllib.parse.urlparse(img_url).path) or f"image_{media_counter}.jpg"
-                
+
                 ext = filename.split('.')[-1].lower() if '.' in filename else ""
                 if ext not in ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'svg']:
                     filename += ".jpg"
-                    
+
                 filename = re.sub(r'[\\/*?:"<>|]', "", filename).strip()[:100]
-                
+
                 if filename not in seen_filenames:
                     seen_filenames.add(filename)
                     media_items.append({
@@ -210,23 +210,23 @@ class GenericExtractor(BaseExtractor):
                         "source": "Web Image"
                     })
                     media_counter += 1
-                    
+
         # 2.4. Extract Document/Compressed files from anchor tags
         anchors = soup.find_all('a')
         file_extensions = {
-            'pdf', 'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 
-            'exe', 'msi', 'dmg', 'pkg', 'apk', 'iso', 
+            'pdf', 'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz',
+            'exe', 'msi', 'dmg', 'pkg', 'apk', 'iso',
             'docx', 'xlsx', 'pptx', 'epub', 'pub', 'mobi', 'azw3', 'txt', 'csv'
         }
         for a in anchors:
             href = a.get('href')
             if not href:
                 continue
-                
+
             file_url = urllib.parse.urljoin(url, href)
             parsed_path = urllib.parse.urlparse(file_url).path
             filename = os.path.basename(parsed_path)
-            
+
             if '.' in filename:
                 ext = filename.split('.')[-1].lower()
                 if ext in file_extensions:
@@ -242,8 +242,46 @@ class GenericExtractor(BaseExtractor):
                             "source": f"Link ({ext.upper()})"
                         })
                         media_counter += 1
-                        
+
+        # 2.5. Extract video/audio from iframes (follow up to 3 levels deep)
+        iframes = soup.find_all('iframe')
+        iframe_depth = getattr(self, '_iframe_depth', 0)
+        if iframe_depth < 3:
+            for iframe in iframes:
+                iframe_src = iframe.get('src') or iframe.get('data-src') or ''
+                if not iframe_src or iframe_src.startswith('about:'):
+                    continue
+                iframe_url = urllib.parse.urljoin(url, iframe_src)
+                try:
+                    iframe_html = self._fetch_iframe_content(iframe_url)
+                    if not iframe_html:
+                        continue
+                    iframe_soup = BeautifulSoup(iframe_html, 'html.parser')
+                    # Recursively extract from iframe content
+                    sub = GenericExtractor()
+                    sub._iframe_depth = iframe_depth + 1
+                    sub_items, _ = sub._extract_from_soup(
+                        iframe_soup, iframe_url, media_counter, seen_filenames, []
+                    )
+                    for item in sub_items:
+                        item["source"] = f"iframe ({urllib.parse.urlparse(iframe_url).netloc})"
+                        media_items.append(item)
+                        media_counter += 1
+                except Exception:
+                    pass
+
         return media_items, album_title
+
+    def _fetch_iframe_content(self, iframe_url, timeout=8):
+        """Fetch iframe page content for nested video extraction."""
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
+        r = requests.get(iframe_url, headers=headers, timeout=timeout, allow_redirects=True)
+        if r.status_code == 200:
+            return r.text
+        return None
 
     def _extract_yt_dlp_media(self, url: str, cookies_path: str = None) -> tuple[list[dict], str]:
         ydl_opts = {
