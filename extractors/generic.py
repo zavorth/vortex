@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 import yt_dlp
 from .base import BaseExtractor
 from services.headless_fetch import headless_fetch_video_url, headless_fetch_iframe_video
+from services.logger import logger
 
 class GenericExtractor(BaseExtractor):
     """Fallback extractor using yt-dlp and general HTML parsing."""
@@ -341,6 +342,7 @@ class GenericExtractor(BaseExtractor):
 
                     # Fallback: try headless browser if yt-dlp found nothing
                     if not any(it.get('type') == 'video' for it in media_items[-3:]):
+                        logger.info('EXTRACT', f"Trying headless browser for: {iframe_url[:80]}...")
                         try:
                             hl_videos = headless_fetch_iframe_video(iframe_url)
                             for item in hl_videos:

@@ -5,6 +5,7 @@ import socket
 import urllib.parse
 
 import requests
+from services.logger import logger
 
 PROXY_MAX_RESPONSE_BYTES = 100 * 1024 * 1024  # 100 MB
 
@@ -45,11 +46,11 @@ def is_safe_url(url):
         for family, _, _, _, sockaddr in addr_info:
             ip_str = sockaddr[0]
             if _is_restricted_ip(ip_str):
-                print(f"[SECURITY BLOCK] SSRF blocked access to local/private IP '{ip_str}' resolved from '{hostname}'")
+                logger.warning('SSRF', f"Blocked access to local/private IP '{ip_str}' resolved from '{hostname}'")
                 return False
         return True
     except Exception as e:
-        print(f"[SECURITY WARNING] Failed to validate URL '{url}': {e}")
+        logger.warning('SSRF', f"Failed to validate URL '{url}': {e}")
         return False
 
 
@@ -105,7 +106,7 @@ def proxy_fetch(url, headers=None, timeout=15, stream=True, allow_redirects=Fals
                 base = urllib.parse.urlparse(current_url)
                 location = urllib.parse.urljoin(current_url, location)
             if not is_safe_redirect(location, current_url):
-                print(f"[SECURITY BLOCK] Redirect to unsafe target blocked: {location}")
+                logger.warning('SSRF', f"Redirect to unsafe target blocked: {location}")
                 return None, ("Redirect to blocked target", 403)
             current_url = location
             r.close()

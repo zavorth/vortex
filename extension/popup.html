@@ -125,18 +125,94 @@
             box-sizing: border-box;
         }
         .btn-open-app:hover { background: rgba(59,130,246,0.1); }
+        /* Settings Panel */
+        .settings-toggle {
+            background: transparent;
+            border: none;
+            color: #475569;
+            font-size: 14px;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: 0.2s;
+        }
+        .settings-toggle:hover { color: #94a3b8; background: rgba(255,255,255,0.05); }
+        #settings-panel {
+            display: none;
+            margin-top: 10px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 8px;
+            padding: 10px;
+        }
+        #settings-panel.visible { display: block; }
+        #settings-panel label {
+            font-size: 10px;
+            color: #64748b;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: block;
+            margin-bottom: 4px;
+        }
+        #settings-panel input {
+            width: 100%;
+            padding: 7px 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(0,0,0,0.3);
+            color: #f1f5f9;
+            font-size: 12px;
+            font-family: monospace;
+            box-sizing: border-box;
+            outline: none;
+        }
+        #settings-panel input:focus { border-color: #3b82f6; }
+        .settings-hint {
+            font-size: 9px;
+            color: #475569;
+            margin-top: 4px;
+        }
+        .settings-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .settings-actions button {
+            flex: 1;
+            padding: 5px;
+            border-radius: 5px;
+            border: none;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-save-settings { background: #2563eb; color: white; }
+        .btn-reset-settings { background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1) !important; }
     </style>
 </head>
 <body>
     <div class="header">
         <h2>⚡ VortexMedia</h2>
+        <button class="settings-toggle" id="btn-settings" title="Configurações">⚙</button>
     </div>
 
     <div class="info" id="current-url">Detectando aba...</div>
-    
+
     <button class="btn" id="btn-open-vortex">⬇ Analisar Aba Atual no Vortex</button>
-    
+
     <div id="status"></div>
+
+    <!-- Settings Panel -->
+    <div id="settings-panel">
+        <label for="server-url">Endereço do Servidor</label>
+        <input type="text" id="server-url" placeholder="http://127.0.0.1:8080">
+        <div class="settings-hint">Deixe vazio para usar o padrão (127.0.0.1:8080)</div>
+        <div class="settings-actions">
+            <button class="btn-save-settings" id="btn-save-settings">Salvar</button>
+            <button class="btn-reset-settings" id="btn-reset-settings">Resetar</button>
+        </div>
+    </div>
 
     <!-- Download Monitor Panel -->
     <div id="download-monitor">

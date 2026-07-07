@@ -1,4 +1,5 @@
-const VORTEX_BASE = 'http://127.0.0.1:8080';
+const DEFAULT_VORTEX_BASE = 'http://127.0.0.1:8080';
+let VORTEX_BASE = DEFAULT_VORTEX_BASE;
 let pollInterval = null;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -12,7 +13,55 @@ document.addEventListener('DOMContentLoaded', () => {
     const monitorFilesCount= document.getElementById('monitor-files-count');
     const monitorSpeed     = document.getElementById('monitor-speed');
     const btnOpenApp       = document.getElementById('btn-open-app');
+    const btnSettings      = document.getElementById('btn-settings');
+    const settingsPanel    = document.getElementById('settings-panel');
+    const serverUrlInput   = document.getElementById('server-url');
+    const btnSaveSettings  = document.getElementById('btn-save-settings');
+    const btnResetSettings = document.getElementById('btn-reset-settings');
     let activeUrl = '';
+
+    // Load saved server URL from chrome.storage
+    function loadSettings() {
+        if (chrome.storage && chrome.storage.local) {
+            chrome.storage.local.get(['vortex_server_url'], (result) => {
+                if (result.vortex_server_url) {
+                    VORTEX_BASE = result.vortex_server_url;
+                    serverUrlInput.value = result.vortex_server_url;
+                }
+            });
+        }
+    }
+
+    loadSettings();
+
+    // Settings toggle
+    btnSettings.addEventListener('click', () => {
+        settingsPanel.classList.toggle('visible');
+    });
+
+    // Save settings
+    btnSaveSettings.addEventListener('click', () => {
+        const url = serverUrlInput.value.trim();
+        if (url) {
+            VORTEX_BASE = url;
+        } else {
+            VORTEX_BASE = DEFAULT_VORTEX_BASE;
+        }
+        if (chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set({ vortex_server_url: VORTEX_BASE });
+        }
+        settingsPanel.classList.remove('visible');
+    });
+
+    // Reset settings
+    btnResetSettings.addEventListener('click', () => {
+        VORTEX_BASE = DEFAULT_VORTEX_BASE;
+        serverUrlInput.value = '';
+        if (chrome.storage && chrome.storage.local) {
+            chrome.storage.local.remove('vortex_server_url');
+        }
+        settingsPanel.classList.remove('visible');
+    });
 
     // Detect current tab URL
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -59,7 +108,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         monitorPanel.classList.add('visible');
 
-        // Status badge
         const badgeMap = {
             'downloading': { cls: 'badge-downloading', label: 'BAIXANDO' },
             'completed':   { cls: 'badge-completed',   label: 'CONCLUÍDO' },
@@ -70,12 +118,10 @@ document.addEventListener('DOMContentLoaded', () => {
         monitorBadge.className = `monitor-status-badge ${badge.cls}`;
         monitorBadge.textContent = badge.label;
 
-        // Overall progress
         const pct = total > 0 ? Math.round((done / total) * 100) : 0;
         monitorFill.style.width = `${pct}%`;
         monitorFill.className = `monitor-progress-fill${status === 'completed' ? ' done' : ''}`;
 
-        // File label: show first active file being downloaded
         const activeFiles = Object.entries(active);
         if (activeFiles.length > 0) {
             const [filename, info] = activeFiles[0];
@@ -83,7 +129,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const filePct = info.percent !== undefined ? info.percent : (info.progress || 0);
             monitorFill.style.width = `${filePct}%`;
 
-            // Speed from first active file (handle either formatted string or numerical speed_bytes/speed)
             let speedStr = '';
             if (typeof info.speed === 'string') {
                 speedStr = info.speed;
@@ -112,19 +157,12 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(r => r.json())
         .then(data => {
             updateMonitor(data);
-            // Stop polling if idle or completed
-            if (data.status === 'idle' && monitorPanel.classList.contains('visible')) {
-                // Keep showing panel for 5s after idle
-            }
         })
         .catch(() => {
-            // Server unreachable - hide monitor
             monitorPanel.classList.remove('visible');
         });
     }
 
-    // Start polling immediately and every 1.5 seconds
     pollStatus();
     pollInterval = setInterval(pollStatus, 1500);
 });
-

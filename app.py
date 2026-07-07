@@ -12,6 +12,7 @@ from extractors import extract_media, GenericExtractor
 from services.proxy_safety import is_safe_url, is_safe_redirect, proxy_fetch, PROXY_MAX_RESPONSE_BYTES
 from services.file_safety import is_safe_cookie_path, resolve_cookie_path, is_safe_path, COOKIES_DIR_NAME
 from services.rate_limiter import rate_limit, default_limiter, strict_limiter
+from services.logger import logger
 import requests
 from bs4 import BeautifulSoup
 
@@ -51,7 +52,7 @@ def is_extension_allowed(ext_id):
     if ext_id in allowed_ids:
         return True
 
-    print(f"[SECURITY BLOCK] Blocked request from unauthorized extension ID: {ext_id}")
+    logger.warning('AUTH', f"Blocked unauthorized extension ID: {ext_id}")
     return False
 
 @app.before_request
