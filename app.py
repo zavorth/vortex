@@ -8,7 +8,7 @@ import secrets
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock, Thread
 from flask import Flask, request, jsonify, render_template, Response
-from extractors import extract_media
+from extractors import extract_media, GenericExtractor
 import requests
 from bs4 import BeautifulSoup
 
@@ -17,7 +17,80 @@ socket.setdefaulttimeout(15.0)
 
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 vortex_token = secrets.token_hex(16)
+import ipaddress
+
+def is_safe_url(url):
+    """Enforces SSRF protection by resolving hostnames and validating that the resolved IPs are public."""
+    if not url:
+        return False
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ('http', 'https'):
+            return False
+            
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+            
+        # Resolve hostname to IP addresses
+        addr_info = socket.getaddrinfo(hostname, None)
+        for family, _, _, _, sockaddr in addr_info:
+            ip_str = sockaddr[0]
+            ip_obj = ipaddress.ip_address(ip_str)
+            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified:
+                print(f"[SECURITY BLOCK] SSRF protection blocked access to local/private IP '{ip_str}' resolved from '{hostname}'")
+                return False
+        return True
+    except Exception as e:
+        print(f"[SECURITY WARNING] Failed to validate URL '{url}': {e}")
+        return False
+
+def is_extension_allowed(ext_id):
+    """Checks if a given Chrome extension ID is permitted. Configurable via allowed_extensions.txt."""
+    allowed_file = os.path.join(os.getcwd(), 'allowed_extensions.txt')
+    if not os.path.exists(allowed_file):
+        try:
+            with open(allowed_file, 'w', encoding='utf-8') as f:
+                f.write("# Adicione os IDs das extensoes do Chrome permitidas abaixo (um por linha):\n")
+                f.write("# Exemplo: kmgipnklamfkmlclbmn...\n")
+        except Exception:
+            pass
+        print(f"[SECURITY WARNING] Extension ID '{ext_id}' allowed. Create 'allowed_extensions.txt' to lock this down.")
+        return True
+        
+    try:
+        with open(allowed_file, 'r', encoding='utf-8') as f:
+            lines = [line.split('#')[0].strip() for line in f.read().splitlines()]
+            allowed_ids = {line for line in lines if line}
+        
+        if not allowed_ids:
+            print(f"[SECURITY WARNING] Extension ID '{ext_id}' allowed. Add it to 'allowed_extensions.txt' to enforce authorization.")
+            return True
+            
+        if ext_id in allowed_ids:
+            return True
+            
+        print(f"[SECURITY BLOCK] Blocked request from unauthorized extension ID: {ext_id}")
+        return False
+    except Exception as e:
+        print(f"[ERROR] Error reading allowed_extensions.txt: {e}")
+        return True
+
+def is_safe_cookie_path(cookies_path):
+    """Prevents directory traversal attacks by validating that the cookie file has a .txt extension and no '..' elements."""
+    if not cookies_path:
+        return True
+    try:
+        norm_path = os.path.normpath(cookies_path)
+        if not norm_path.endswith('.txt'):
+            return False
+        if '..' in norm_path:
+            return False
+        return True
+    except Exception:
+        return False
 
 @app.before_request
 def verify_vortex_token():
@@ -25,10 +98,14 @@ def verify_vortex_token():
         return '', 200
         
     if request.path.startswith('/api/'):
-        # Allow Chrome/Edge extensions to bypass token via Origin
+        # Allow Chrome/Edge extensions to bypass token via Origin, verifying ID
         origin = request.headers.get('Origin', '')
         if origin.startswith('chrome-extension://'):
-            return
+            ext_id = origin.replace('chrome-extension://', '').split('/')[0]
+            if is_extension_allowed(ext_id):
+                return
+            else:
+                return "Unauthorized Extension ID", 403
             
         token = request.headers.get('X-Vortex-Token')
         if request.path in ['/api/proxy-image', '/api/proxy', '/api/serve-file']:
@@ -264,7 +341,7 @@ def analyze_html():
         extractor = GenericExtractor()
         media_list, title = extractor.extract_html(html_content, base_url)
         
-        default_dir = get_default_download_dir()
+        default_dir = get_default_download_dir("Local_HTML")
         
         return jsonify({
             "title": title or "Arquivo HTML Local",
@@ -281,6 +358,9 @@ def analyze():
     url = data.get('url', '').strip()
     cookies_path = data.get('cookies_path', '').strip()
     
+    if cookies_path and not is_safe_cookie_path(cookies_path):
+        return jsonify({"error": "Caminho de cookies inválido."}), 400
+        
     print(f"\n[ANALYZE] URL solicitada: {url}", flush=True)
     
     if not url:
@@ -432,6 +512,9 @@ def proxy_image():
     if not image_url:
         return "Missing url parameter", 400
         
+    if not is_safe_url(image_url):
+        return "Forbidden target URL", 403
+        
     parsed = urllib.parse.urlparse(image_url)
     domain = parsed.netloc.lower()
     
@@ -465,9 +548,11 @@ def download_ytdl_worker(item, download_dir, cookies_path=None):
             return
         download_state["active_downloads"][filename] = {
             "progress": 0,
+            "percent": 0,
             "downloaded": 0,
             "total": 0,
-            "speed": "0 KB/s"
+            "speed": "0 KB/s",
+            "speed_bytes": 0
         }
         
     import yt_dlp
@@ -517,14 +602,17 @@ def download_ytdl_worker(item, download_dir, cookies_path=None):
                 if filename in download_state["active_downloads"]:
                     download_state["active_downloads"][filename].update({
                         "progress": percent,
+                        "percent": percent,
                         "downloaded": downloaded,
                         "total": total,
-                        "speed": speed_str
+                        "speed": speed_str,
+                        "speed_bytes": speed_val or 0
                     })
         elif d['status'] == 'finished':
             with download_lock:
                 if filename in download_state["active_downloads"]:
                     download_state["active_downloads"][filename]["progress"] = 100
+                    download_state["active_downloads"][filename]["percent"] = 100
                     
     ydl_opts['progress_hooks'] = [progress_hook]
     
@@ -596,9 +684,11 @@ def download_file_worker(item, download_dir, album_url, cookies_path=None):
             return
         download_state["active_downloads"][filename] = {
             "progress": 0,
+            "percent": 0,
             "downloaded": 0,
             "total": 0,
-            "speed": "0 KB/s"
+            "speed": "0 KB/s",
+            "speed_bytes": 0
         }
 
     os.makedirs(download_dir, exist_ok=True)
@@ -694,6 +784,7 @@ def download_file_worker(item, download_dir, album_url, cookies_path=None):
                                 speed_str = f"{speed_val / 1024:.2f} KB/s"
                         else:
                             speed_str = "0 KB/s"
+                            speed_val = 0
                             
                         percent = int((bytes_downloaded / total_size) * 100) if total_size > 0 else 0
                         
@@ -701,8 +792,10 @@ def download_file_worker(item, download_dir, album_url, cookies_path=None):
                             if filename in download_state["active_downloads"]:
                                 download_state["active_downloads"][filename].update({
                                     "progress": percent,
+                                    "percent": percent,
                                     "downloaded": bytes_downloaded,
-                                    "speed": speed_str
+                                    "speed": speed_str,
+                                    "speed_bytes": int(speed_val)
                                 })
             break
         except Exception as e:
@@ -862,6 +955,19 @@ def upload_cookies():
     if file.filename == '':
         return jsonify({"error": "Nome de arquivo inválido."}), 400
         
+    if not file.filename.endswith('.txt'):
+        return jsonify({"error": "Apenas arquivos .txt de cookies são permitidos."}), 400
+        
+    # Limit size to 5MB (5 * 1024 * 1024 bytes)
+    try:
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
+        if file_size > 5 * 1024 * 1024:
+            return jsonify({"error": "O arquivo de cookies excede o limite de 5MB."}), 400
+    except Exception as e:
+        return jsonify({"error": f"Erro ao validar tamanho do arquivo: {str(e)}"}), 400
+        
     if file:
         try:
             client_ip = request.remote_addr
@@ -901,6 +1007,9 @@ def proxy_media():
     
     if not url_val:
         return "Missing URL", 400
+        
+    if not is_safe_url(url_val):
+        return "Forbidden target URL", 403
         
     parsed = urllib.parse.urlparse(url_val)
     if 'erome.com' in parsed.netloc:
@@ -962,6 +1071,10 @@ def download():
     download_dir = data.get('download_dir', '').strip()
     album_url = data.get('album_url', '').strip()
     cookies_path = data.get('cookies_path', '').strip()
+    
+    if cookies_path and not is_safe_cookie_path(cookies_path):
+        return jsonify({"error": "Caminho de cookies inválido."}), 400
+        
     concurrency = int(data.get('concurrency', 4))
     # Clamp to safe limits
     concurrency = max(1, min(concurrency, 12))

@@ -80,11 +80,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activeFiles.length > 0) {
             const [filename, info] = activeFiles[0];
             monitorFileLabel.textContent = filename;
-            const filePct = info.percent || 0;
+            const filePct = info.percent !== undefined ? info.percent : (info.progress || 0);
             monitorFill.style.width = `${filePct}%`;
 
-            // Speed from first active file
-            const speedStr = formatSpeed(info.speed);
+            // Speed from first active file (handle either formatted string or numerical speed_bytes/speed)
+            let speedStr = '';
+            if (typeof info.speed === 'string') {
+                speedStr = info.speed;
+            } else if (info.speed_bytes !== undefined) {
+                speedStr = formatSpeed(info.speed_bytes);
+            } else {
+                speedStr = formatSpeed(info.speed);
+            }
             monitorSpeed.textContent = speedStr;
         } else if (status === 'completed') {
             monitorFileLabel.textContent = 'Download finalizado!';
