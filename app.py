@@ -14,6 +14,11 @@ from services.file_safety import is_safe_cookie_path, resolve_cookie_path, is_sa
 from services.rate_limiter import rate_limit, default_limiter, strict_limiter
 from services.logger import logger
 from services.download_history import add_download_record, update_download_record, get_history, clear_history
+from services.download_engine import download_with_resume, download_parallel, verify_download
+from services.page_extract import extract_all_media
+from services.stream_support import check_url_is_stream, get_best_variant, download_m3u8
+from services.bandwidth import bandwidth_limiter, BandwidthLimiter
+from services.converter import convert_media, get_ffmpeg_path
 import requests
 from bs4 import BeautifulSoup
 
@@ -1435,6 +1440,84 @@ def clear_download_history():
     """Clear all download history."""
     clear_history()
     return jsonify({"success": True})
+
+@app.route('/api/bandwidth', methods=['GET'])
+def get_bandwidth_limit():
+    """Get current bandwidth limit."""
+    limit = bandwidth_limiter.max_bps
+    return jsonify({
+        "limit": limit,
+        "limit_str": BandwidthLimiter.format_speed(limit)
+    })
+
+@app.route('/api/bandwidth', methods=['POST'])
+def set_bandwidth_limit():
+    """Set bandwidth limit in bytes/sec. 0 = unlimited."""
+    data = request.json or {}
+    limit = data.get('limit', 0)
+    bandwidth_limiter.set_limit(limit)
+    return jsonify({
+        "success": True,
+        "limit": limit,
+        "limit_str": BandwidthLimiter.format_speed(limit)
+    })
+
+@app.route('/api/extract-page', methods=['POST'])
+@rate_limit(strict_limiter)
+def extract_page_media():
+    """Extract ALL media from a page URL."""
+    data = request.json or {}
+    url = data.get('url', '').strip()
+    cookies_path = data.get('cookies_path', '').strip()
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    if not url.startswith('http'):
+        url = 'https://' + url
+
+    resolved_cookies = resolve_cookie_path(cookies_path)
+    items = extract_all_media(url, cookies_path=resolved_cookies)
+    return jsonify({"media": items, "count": len(items)})
+
+@app.route('/api/check-stream', methods=['POST'])
+def check_stream():
+    """Check if a URL is an HLS/DASH stream."""
+    data = request.json or {}
+    url = data.get('url', '')
+    is_stream, stream_type = check_url_is_stream(url)
+    return jsonify({"is_stream": is_stream, "stream_type": stream_type})
+
+@app.route('/api/convert', methods=['POST'])
+@rate_limit(strict_limiter)
+def convert_file():
+    """Convert a media file to a different format."""
+    data = request.json or {}
+    filepath = data.get('filepath', '').strip()
+    output_format = data.get('format', 'mp4')
+    quality = data.get('quality', 'medium')
+
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({"error": "File not found"}), 400
+
+    success, output_path, message = convert_media(filepath, output_format, quality)
+    if success:
+        return jsonify({"success": True, "output": output_path, "message": message})
+    else:
+        return jsonify({"error": message}), 500
+
+@app.route('/api/verify', methods=['POST'])
+def verify_file():
+    """Verify integrity of a downloaded file."""
+    data = request.json or {}
+    filepath = data.get('filepath', '')
+    expected_size = data.get('expected_size')
+
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({"error": "File not found"}), 400
+
+    ok, message = verify_download(filepath, expected_size)
+    return jsonify({"valid": ok, "message": message, "size": os.path.getsize(filepath)})
 
 if __name__ == '__main__':
     import webbrowser
