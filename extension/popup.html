@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>VortexMedia Extension</title>
+    <style>
+        body {
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: 320px;
+            margin: 0;
+            padding: 15px;
+            background: #0a0f1e;
+            color: #f1f5f9;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding-bottom: 10px;
+        }
+        h2 { margin: 0; font-size: 16px; color: #3b82f6; letter-spacing: 0.5px; }
+        .info {
+            font-size: 11px;
+            color: #64748b;
+            margin-bottom: 14px;
+            text-align: center;
+            word-break: break-all;
+            background: rgba(255,255,255,0.03);
+            padding: 7px 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.06);
+            line-height: 1.4;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            transition: 0.2s;
+            box-sizing: border-box;
+        }
+        .btn:hover { opacity: 0.88; }
+        .btn:disabled { background: #1e293b; color: #475569; cursor: not-allowed; }
+        /* Download Monitor */
+        #download-monitor {
+            margin-top: 12px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 10px;
+            padding: 12px;
+            display: none;
+        }
+        #download-monitor.visible { display: block; }
+        .monitor-title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: #475569;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+        .monitor-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        .monitor-status-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 100px;
+            letter-spacing: 0.5px;
+        }
+        .badge-downloading { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+        .badge-completed   { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+        .badge-idle        { background: rgba(71,85,105,0.2);   color: #94a3b8; border: 1px solid rgba(71,85,105,0.3); }
+        .badge-error       { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+        .monitor-progress-track {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.07);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+        .monitor-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #06b6d4);
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+        .monitor-progress-fill.done { background: linear-gradient(90deg, #10b981, #34d399); }
+        .monitor-sub {
+            font-size: 10px;
+            color: #475569;
+            display: flex;
+            justify-content: space-between;
+        }
+        #status { font-size: 11px; text-align: center; margin-top: 8px; display: none; }
+        #status.success { color: #10b981; }
+        #status.error { color: #ef4444; }
+        .btn-open-app {
+            background: transparent;
+            border: 1px solid rgba(59,130,246,0.3);
+            color: #60a5fa;
+            font-size: 11px;
+            padding: 6px;
+            margin-top: 8px;
+            border-radius: 6px;
+            width: 100%;
+            cursor: pointer;
+            transition: 0.2s;
+            box-sizing: border-box;
+        }
+        .btn-open-app:hover { background: rgba(59,130,246,0.1); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>⚡ VortexMedia</h2>
+    </div>
+
+    <div class="info" id="current-url">Detectando aba...</div>
+    
+    <button class="btn" id="btn-open-vortex">⬇ Analisar Aba Atual no Vortex</button>
+    
+    <div id="status"></div>
+
+    <!-- Download Monitor Panel -->
+    <div id="download-monitor">
+        <div class="monitor-title">📥 Monitor de Download</div>
+        <div class="monitor-row">
+            <span style="color:#94a3b8; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;" id="monitor-file-label">—</span>
+            <span class="monitor-status-badge badge-idle" id="monitor-status-badge">OCIOSO</span>
+        </div>
+        <div class="monitor-progress-track">
+            <div class="monitor-progress-fill" id="monitor-progress-fill" style="width: 0%;"></div>
+        </div>
+        <div class="monitor-sub">
+            <span id="monitor-files-count">—</span>
+            <span id="monitor-speed">—</span>
+        </div>
+        <button class="btn-open-app" id="btn-open-app">Abrir Vortex ↗</button>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

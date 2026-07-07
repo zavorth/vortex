@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <script>
+        window.VORTEX_TOKEN = "{{ token }}";
+        (function() {
+            const originalFetch = window.fetch;
+            window.fetch = function (input, init) {
+                let url = typeof input === 'string' ? input : (input && input.url) ? input.url : '';
+                if (url && (url.startsWith('/api/') || url.startsWith(window.location.origin + '/api/'))) {
+                    init = init || {};
+                    init.headers = init.headers || {};
+                    if (init.headers instanceof Headers) {
+                        init.headers.set('X-Vortex-Token', window.VORTEX_TOKEN);
+                    } else if (Array.isArray(init.headers)) {
+                        init.headers.push(['X-Vortex-Token', window.VORTEX_TOKEN]);
+                    } else {
+                        init.headers['X-Vortex-Token'] = window.VORTEX_TOKEN;
+                    }
+                }
+                return originalFetch(input, init);
+            };
+        })();
+        window.onerror = function(message, source, lineno, colno, error) {
+            fetch('/api/log-error', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    error: message,
+                    filename: source,
+                    lineno: lineno,
+                    colno: colno,
+                    stack: error ? error.stack : ''
+                })
+            });
+            return false;
+        };
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vortex</title>
+    <meta name="description" content="Baixe vídeos, áudios, imagens e arquivos de qualquer site da web com um clique.">
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/style.css?v=4.0.0">
+</head>
+<body>
+    <div class="mesh-bg"></div>
+    
+    <button id="theme-toggle" class="theme-toggle-btn" aria-label="Alternar Tema">
+        <i class="fa-solid fa-moon"></i>
+    </button>
+
+    <button id="btn-update-ytdl" class="theme-toggle-btn ytdl-update-btn" title="Atualizar Motor de Download (yt-dlp)">
+        <i class="fa-solid fa-arrows-rotate"></i>
+    </button>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="main-header">
+            <div class="logo">
+                <i class="fa-solid fa-hurricane logo-icon"></i>
+                <h1>Vortex</h1>
+            </div>
+            <p class="subtitle">Capture qualquer mídia da web — vídeos, áudios, imagens e arquivos</p>
+        </header>
+
+        <!-- URL Input -->
+        <section class="card input-section">
+            <div class="input-wrapper">
+                <i class="fa-solid fa-link input-icon"></i>
+                <input type="text" id="album-url" placeholder="Cole qualquer link aqui (YouTube, Instagram, TikTok, etc.)" autocomplete="off">
+                <button id="btn-paste" class="btn btn-secondary btn-paste-class" title="Colar Link da Área de Transferência" type="button" style="margin: 6px 4px 6px 0; padding: 0 14px; display: flex; align-items: center; justify-content: center;">
+                    <i class="fa-solid fa-clipboard"></i>
+                </button>
+                <button id="btn-analyze" class="btn btn-primary" style="margin: 6px 6px 6px 0;">
+                    <span class="btn-text"><i class="fa-solid fa-magnifying-glass"></i> Analisar</span>
+                    <span class="spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                </button>
+            </div>
+            <div id="error-message" class="error-box hidden">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span class="error-text">Ocorreu um erro</span>
+            </div>
+        </section>
+
+        <!-- Recent History -->
+        <div id="history-container" class="card history-card hidden" style="padding: 1rem; margin-top: -0.5rem; margin-bottom: 0.5rem;">
+            <div class="history-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h4 style="margin: 0; font-size: 0.82rem; font-weight: 500; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Links Recentes
+                </h4>
+                <button id="btn-clear-history" class="control-btn" style="padding: 2px 8px; font-size: 0.68rem; border-radius: 4px; border: none; background: transparent; cursor: pointer; color: var(--text-muted);">
+                    <i class="fa-solid fa-trash-can"></i> Limpar
+                </button>
+            </div>
+            <div id="history-list" class="history-list" style="display: flex; flex-direction: column; gap: 6px; margin-top: 10px;"></div>
+        </div>
+
+        <!-- Advanced Settings (Tools & Cookies) -->
+        <details class="card settings-card" style="margin-top: 0.5rem; margin-bottom: 0.5rem;">
+            <summary class="settings-summary">
+                <span class="settings-title"><i class="fa-solid fa-sliders"></i> Ferramentas e Configurações Avançadas</span>
+                <i class="fa-solid fa-chevron-down settings-chevron"></i>
+            </summary>
+            <div class="settings-content" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 1.5rem;">
+                <!-- Section 1: Cookies -->
+                <div class="path-input-group">
+                    <label for="cookies-path"><i class="fa-solid fa-cookie-bite"></i> Arquivo de Cookies (cookies.txt)</label>
+                    <input type="file" id="cookies-file-input" accept=".txt" style="display: none;">
+                    <div class="path-wrapper" style="display: flex; gap: 8px; align-items: stretch; width: 100%;">
+                        <input type="text" id="cookies-path" placeholder="Nenhum arquivo cookies.txt selecionado" readonly style="flex: 1; min-width: 0;">
+                        <button id="btn-browse-cookies" class="btn btn-secondary" style="padding: 8px 14px; font-size: 0.82rem; border-radius: 8px;">
+                            <i class="fa-solid fa-file-import"></i> Importar
+                        </button>
+                        <button id="btn-clear-cookies" class="btn btn-secondary" style="padding: 8px 14px; font-size: 0.82rem; border-radius: 8px;" title="Remover Cookies">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                    <div class="settings-info-box" style="margin-top: 1rem; padding: 1rem; background: rgba(255, 255, 255, 0.03); border-radius: 8px; border: 1px solid var(--border);">
+                        <p class="info-title" style="margin: 0 0 8px 0; font-size: 0.82rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-circle-info" style="color: var(--color-primary);"></i> Como obter seus cookies para o X (Twitter) e Instagram:
+                        </p>
+                        <ol class="info-list" style="margin: 0; padding-left: 1.25rem; font-size: 0.78rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
+                            <li>Instale a extensão gratuita <strong>Get cookies.txt LOCALLY</strong> no Chrome/Edge ou Firefox.</li>
+                            <li>Acesse o site desejado (ex: <strong>x.com</strong> ou <strong>instagram.com</strong>) e faça login na sua conta.</li>
+                            <li>Abra a extensão, clique em <strong>"Export As TXT"</strong> (formato Netscape) e salve o arquivo no seu computador.</li>
+                            <li>Clique em <strong>Importar</strong> acima e selecione o arquivo <code>.txt</code> salvo.</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Section 2: FFmpeg Status and Installer -->
+                <div class="settings-divider" style="height: 1px; background: var(--border); width: 100%;"></div>
+                <div class="path-input-group">
+                    <label><i class="fa-solid fa-film"></i> Motor de Vídeo (FFmpeg)</label>
+                    <div class="ffmpeg-status-container" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border: 1px solid var(--border); margin-top: 4px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="ffmpeg-status-dot" class="status-dot" style="width: 10px; height: 10px; border-radius: 50%; background: #ccc; display: inline-block;"></span>
+                            <span id="ffmpeg-status-text" style="font-size: 0.82rem; font-weight: 500;">Verificando status...</span>
+                        </div>
+                        <button id="btn-install-ffmpeg" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.78rem; border-radius: 6px; display: none;">
+                            <i class="fa-solid fa-download"></i> Instalar FFmpeg Local
+                        </button>
+                    </div>
+                    <div id="ffmpeg-progress-container" class="hidden" style="margin-top: 10px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">
+                            <span id="ffmpeg-progress-label">Baixando FFmpeg (essentials)...</span>
+                            <span id="ffmpeg-progress-percentage">0%</span>
+                        </div>
+                        <div class="progress-bar-container" style="height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                            <div id="ffmpeg-progress-bar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 3: Concurrency Settings -->
+                <div class="settings-divider" style="height: 1px; background: var(--border); width: 100%;"></div>
+                <div class="path-input-group">
+                    <label for="download-concurrency"><i class="fa-solid fa-bolt"></i> Downloads Simultâneos</label>
+                    <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
+                        <select id="download-concurrency" class="control-btn" style="padding: 8px 16px; border-radius: 8px; background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-primary); font-family: var(--font-body); font-size: 0.85rem; cursor: pointer; outline: none;">
+                            <option value="2">2 Downloads simultâneos</option>
+                            <option value="4" selected>4 Downloads simultâneos (Padrão)</option>
+                            <option value="6">6 Downloads simultâneos</option>
+                            <option value="8">8 Downloads simultâneos</option>
+                        </select>
+                        <span style="font-size: 0.78rem; color: var(--text-secondary);">Ajuste de acordo com a velocidade da sua conexão.</span>
+                    </div>
+                </div>
+
+                <!-- Section 4: Bookmarklet / Enviar com um clique -->
+                <div class="settings-divider" style="height: 1px; background: var(--border); width: 100%;"></div>
+                <div class="path-input-group">
+                    <label><i class="fa-solid fa-bookmark"></i> Favorito "Enviar para o Vortex" (Um clique)</label>
+                    <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0 0 10px 0; line-height: 1.4;">
+                        Arraste o botão abaixo para a sua barra de favoritos. Quando estiver assistindo a um vídeo em qualquer site, clique no favorito para abrir o Vortex já analisando o vídeo automaticamente.
+                    </p>
+                    <a href="javascript:(function(){const url=window.location.href;window.open('http://127.0.0.1:8080/?url='+encodeURIComponent(url),'_blank');})();" 
+                       class="btn btn-secondary" 
+                       style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 0.82rem; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px dashed var(--primary); color: #fff; cursor: grab; user-select: none;"
+                       onclick="event.preventDefault(); alert('Arraste este botão para a sua Barra de Favoritos (Ctrl+Shift+B se ela não estiver aparecendo).');">
+                        <i class="fa-solid fa-hurricane"></i> Enviar para o Vortex
+                    </a>
+                </div>
+            </div>
+        </details>
+
+        <!-- Media Dashboard -->
+        <section id="media-dashboard" class="media-dashboard hidden">
+            <!-- Metadata -->
+            <div class="card metadata-card">
+                <div class="album-info">
+                    <i class="fa-regular fa-folder-open folder-icon"></i>
+                    <div>
+                        <h2 id="album-title" class="album-title">Título do conteúdo</h2>
+                        <p id="album-count" class="album-count">0 itens encontrados</p>
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div class="media-controls">
+                    <div class="filter-group">
+                        <button class="filter-btn active" data-filter="all">Tudo</button>
+                        <button class="filter-btn" data-filter="video"><i class="fa-solid fa-video"></i> Vídeos</button>
+                        <button class="filter-btn" data-filter="audio"><i class="fa-solid fa-music"></i> Áudios</button>
+                        <button class="filter-btn" data-filter="image"><i class="fa-solid fa-image"></i> Imagens</button>
+                        <button class="filter-btn" data-filter="document"><i class="fa-solid fa-file-lines"></i> Arquivos</button>
+                    </div>
+                    <div class="selection-group">
+                        <button id="btn-select-all" class="control-btn"><i class="fa-solid fa-check-double"></i> Marcar Tudo</button>
+                        <button id="btn-deselect-all" class="control-btn"><i class="fa-solid fa-xmark"></i> Limpar</button>
+                    </div>
+                </div>
+
+                <!-- Filters Extra (Size Slider & Modo Leitura) -->
+                <div class="filter-extra-row" style="margin-top: 15px; display: flex; align-items: center; gap: 15px; border-top: 1px solid var(--border); padding-top: 12px; width: 100%;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                        <span style="font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap;"><i class="fa-solid fa-weight-hanging"></i> Filtrar Tamanho:</span>
+                        <input type="range" id="size-filter-slider" min="0" max="100" value="0" style="flex: 1; cursor: pointer; height: 6px; border-radius: 3px; background: var(--border); outline: none;">
+                        <span id="size-filter-value" style="font-size: 0.8rem; font-weight: 600; color: var(--cyan); white-space: nowrap; min-width: 60px;">Tudo</span>
+                    </div>
+                    <div class="selection-group" id="selection-reader-group" style="display: flex; gap: 6px; margin-left: auto;">
+                        <button id="btn-manga-reader" class="control-btn" style="background: var(--gradient-accent); color: white; border: none; font-weight: 600; display: none; padding: 6px 14px; border-radius: 100px; display: inline-flex; align-items: center; gap: 6px;"><i class="fa-solid fa-book-open"></i> Modo Leitura</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Download Path -->
+            <div class="card path-card">
+                <div class="path-input-group">
+                    <label for="download-path"><i class="fa-solid fa-folder-closed"></i> Destino dos Downloads</label>
+                    <div class="path-wrapper" style="display: flex; gap: 8px; align-items: stretch; width: 100%;">
+                        <input type="text" id="download-path" placeholder="Caminho da pasta" style="flex: 1; min-width: 0;">
+                        <button id="btn-browse" class="btn btn-secondary" style="padding: 8px 14px; font-size: 0.82rem; border-radius: 8px;">
+                            <i class="fa-regular fa-folder-open"></i> Alterar
+                        </button>
+                    </div>
+                    <div class="settings-checkbox-group" style="margin-top: 8px; display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="chk-subfolder" style="width: auto; cursor: pointer;">
+                        <label for="chk-subfolder" style="font-size: 0.78rem; color: var(--text-secondary); cursor: pointer; user-select: none; margin: 0;">Criar subpasta com o título do link</label>
+                    </div>
+                    <span class="path-tip">Padrão: Downloads/VortexMedia</span>
+                </div>
+            </div>
+
+
+
+
+            <!-- Floating Action Bar -->
+            <div class="action-bar-sticky">
+                <div class="action-bar-content">
+                    <span id="selected-counter">0 arquivos selecionados</span>
+                    <button id="btn-download-start" class="btn btn-success" disabled>
+                        <i class="fa-solid fa-download"></i> Baixar Selecionados
+                    </button>
+                </div>
+            </div>
+
+            <!-- Media Grid -->
+            <div id="media-grid" class="media-grid"></div>
+        </section>
+
+        <!-- Progress Panel -->
+        <section id="progress-panel" class="card progress-panel hidden">
+            <div class="progress-header">
+                <h3><i class="fa-solid fa-spinner fa-spin"></i> Baixando...</h3>
+                <span id="progress-file-count">0 / 0</span>
+            </div>
+
+            <div class="overall-progress-wrapper">
+                <div class="progress-bar-container">
+                    <div id="overall-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+                </div>
+                <div class="overall-progress-percentage"><span id="overall-percentage">0</span>%</div>
+            </div>
+
+            <div class="active-files-list-header">Downloads ativos</div>
+            <div id="active-files-list" class="active-files-list"></div>
+
+            <div class="progress-actions">
+                <span id="download-target-hint">Salvando em: <strong id="progress-path">...</strong></span>
+                <button id="btn-cancel" class="btn btn-danger"><i class="fa-solid fa-ban"></i> Cancelar</button>
+            </div>
+        </section>
+    </div>
+
+    <!-- Completion Modal -->
+    <div id="completion-modal" class="modal-overlay hidden">
+        <div class="modal-content card">
+            <div class="modal-icon"><i class="fa-solid fa-circle-check"></i></div>
+            <h2>Download Concluído!</h2>
+            <p>Todos os arquivos foram salvos com sucesso.</p>
+            <div class="modal-path-info">
+                <i class="fa-regular fa-folder-open"></i>
+                <span id="modal-folder-path">C:\Users\...</span>
+            </div>
+            <div class="modal-buttons">
+                <button id="btn-close-modal" class="btn btn-secondary">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Video Preview Modal -->
+    <div id="preview-modal" class="modal-overlay hidden">
+        <button id="btn-prev-video" class="modal-nav-btn prev" title="Vídeo Anterior"><i class="fa-solid fa-chevron-left"></i></button>
+        <div class="modal-content card" style="max-width: 800px; width: 92%; padding: 1.25rem; text-align: left;">
+            <div class="modal-header">
+                <h3 id="preview-title">Prévia do Vídeo</h3>
+                <button id="btn-close-preview" class="control-btn" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-xmark"></i> Fechar</button>
+            </div>
+            <div style="width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 8px; overflow: hidden;">
+                <video id="preview-video-player" controls style="width: 100%; height: 100%; object-fit: contain;"></video>
+            </div>
+        </div>
+        <button id="btn-next-video" class="modal-nav-btn next" title="Próximo Vídeo"><i class="fa-solid fa-chevron-right"></i></button>
+    </div>
+
+    <!-- Image Preview Modal -->
+    <div id="image-preview-modal" class="modal-overlay hidden">
+        <button id="btn-prev-image" class="modal-nav-btn prev" title="Imagem Anterior"><i class="fa-solid fa-chevron-left"></i></button>
+        <div class="modal-content card" style="max-width: 90%; max-height: 90vh; width: auto; padding: 1.25rem; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(10, 15, 30, 0.95); border-color: rgba(255,255,255,0.1);">
+            <div class="modal-header" style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 20px;">
+                <h3 id="image-preview-title" style="margin: 0; font-size: 1.1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; color: var(--text-primary);">Prévia da Imagem</h3>
+                <div style="display: flex; align-items: center;">
+                    <button id="btn-zoom-image" class="control-btn" style="padding: 4px 10px; font-size: 0.78rem; margin-right: 8px;"><i class="fa-solid fa-magnifying-glass-plus"></i> Zoom</button>
+                    <button id="btn-close-image-preview" class="control-btn" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-xmark"></i> Fechar</button>
+                </div>
+            </div>
+            <div id="preview-image-container" style="max-width: 100%; max-height: 75vh; overflow: auto; display: flex; justify-content: center; align-items: center; width: 100%;">
+                <img id="preview-image-element" style="max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 6px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); cursor: zoom-in;">
+            </div>
+        </div>
+        <button id="btn-next-image" class="modal-nav-btn next" title="Próxima Imagem"><i class="fa-solid fa-chevron-right"></i></button>
+    </div>
+
+    <!-- Manga Reader (Modo Leitura) Modal -->
+    <div id="manga-reader-modal" class="modal-overlay hidden" style="background: rgba(5, 7, 15, 0.98);">
+        <div class="manga-reader-header">
+            <h3 id="manga-reader-title"><i class="fa-solid fa-book-open"></i> Modo Leitura</h3>
+            <span id="manga-reader-pages">0 / 0 páginas</span>
+            <div class="manga-reader-controls">
+                <button id="btn-reader-download-all" class="btn btn-success" style="padding: 6px 14px; font-size: 0.8rem; border-radius: 100px;"><i class="fa-solid fa-download"></i> Baixar Tudo</button>
+                <button id="btn-reader-theme" class="control-btn" title="Fundo Totalmente Preto" style="padding: 6px 12px; font-size: 0.8rem;"><i class="fa-solid fa-circle-half-stroke"></i> Tema</button>
+                <button id="btn-close-manga-reader" class="control-btn" style="padding: 6px 14px; font-size: 0.8rem; border-radius: 100px;"><i class="fa-solid fa-xmark"></i> Fechar</button>
+            </div>
+        </div>
+        <div id="manga-reader-content" class="manga-reader-content">
+            <!-- Images loaded dynamically here -->
+        </div>
+    </div>
+
+    <!-- Share (QR Code) Modal -->
+    <div id="share-modal" class="modal-overlay hidden">
+        <div class="modal-content card" style="max-width: 320px; width: 92%; padding: 1.5rem; text-align: center;">
+            <div class="modal-header" style="justify-content: space-between; align-items: center; margin-bottom: 12px; display: flex;">
+                <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-primary);"><i class="fa-solid fa-share-nodes"></i> Compartilhar</h3>
+                <button id="btn-close-share" class="control-btn" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0 0 15px 0;">
+                Escaneie o QR Code com o seu celular (conectado na mesma rede Wi-Fi) para baixar o arquivo.
+            </p>
+            <div id="qr-code-container" style="background: white; padding: 10px; border-radius: 8px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin-bottom: 10px;">
+                <img id="qr-code-img" src="" alt="QR Code" style="display: block; width: 200px; height: 200px;">
+            </div>
+            <div style="font-size: 0.7rem; color: var(--text-muted); word-break: break-all; margin-top: 8px;" id="share-url-text"></div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="/static/script.js?v=5.0.0"></script>
+</body>
+</html>
