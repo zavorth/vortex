@@ -257,18 +257,25 @@ def index():
 
 @app.after_request
 def add_header(r):
-    """Disable caching for development responsiveness and allow Extension CORS."""
+    """Security headers, CORS for Extension, and cache control."""
     r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     r.headers["Pragma"] = "no-cache"
     r.headers["Expires"] = "0"
     r.headers['Cache-Control'] = 'public, max-age=0'
-    
+
+    # Security headers
+    r.headers['X-Content-Type-Options'] = 'nosniff'
+    r.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    r.headers['X-XSS-Protection'] = '1; mode=block'
+    r.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+    # CORS for Chrome/Edge extension
     origin = request.headers.get('Origin')
     if origin and origin.startswith('chrome-extension://'):
         r.headers['Access-Control-Allow-Origin'] = origin
         r.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Vortex-Token'
         r.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
-        
+
     return r
 
 @app.route('/api/analyze-html', methods=['POST'])

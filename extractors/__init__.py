@@ -1,11 +1,17 @@
 from .twitter import TwitterExtractor
 from .erome import EromeExtractor
+from .pornhub import PornHubExtractor
+from .xhamster import XHamsterExtractor
+from .xvideos import XVideosExtractor
 from .generic import GenericExtractor
 
 # Registered extractors in order of priority (specific plugins first, fallback last)
 EXTRACTORS = [
     TwitterExtractor(),
     EromeExtractor(),
+    PornHubExtractor(),
+    XHamsterExtractor(),
+    XVideosExtractor(),
     GenericExtractor()
 ]
 
