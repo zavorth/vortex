@@ -28,7 +28,9 @@ class RateLimiter:
         with self._lock:
             if ip not in self._hits:
                 self._hits[ip] = []
-            self._cleanup(ip)
+            # Prune expired entries inline (no separate cleanup that deletes the key)
+            cutoff = now - self.window_seconds
+            self._hits[ip] = [t for t in self._hits[ip] if t > cutoff]
             if len(self._hits[ip]) >= self.max_requests:
                 return False
             self._hits[ip].append(now)

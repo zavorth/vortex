@@ -483,9 +483,11 @@ def proxy_image():
     try:
         if r.status_code == 200:
             content_type = r.headers.get('content-type', 'image/jpeg')
-            # Read with size limit (10 MB for images)
-            data = r.raw.read(10 * 1024 * 1024)
+            IMAGE_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+            data = r.raw.read(IMAGE_MAX_BYTES + 1)
             r.close()
+            if len(data) > IMAGE_MAX_BYTES:
+                return "Image exceeds 10 MB limit", 413
             return Response(data, mimetype=content_type)
         else:
             r.close()
@@ -1024,12 +1026,14 @@ def proxy_media():
 
         def generate():
             bytes_sent = 0
-            for chunk in r.iter_content(chunk_size=1024 * 64):
-                bytes_sent += len(chunk)
-                if bytes_sent > PROXY_MAX_RESPONSE_BYTES:
-                    r.close()
-                    break
-                yield chunk
+            try:
+                for chunk in r.iter_content(chunk_size=1024 * 64):
+                    bytes_sent += len(chunk)
+                    if bytes_sent > PROXY_MAX_RESPONSE_BYTES:
+                        break
+                    yield chunk
+            finally:
+                r.close()
 
         return Response(generate(), status=r.status_code, headers=resp_headers)
     except Exception as e:
