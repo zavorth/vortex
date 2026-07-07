@@ -327,13 +327,14 @@
         <div class="modal-content card" style="max-width: 90%; max-height: 90vh; width: auto; padding: 1.25rem; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(10, 15, 30, 0.95); border-color: rgba(255,255,255,0.1);">
             <div class="modal-header" style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 20px;">
                 <h3 id="image-preview-title" style="margin: 0; font-size: 1.1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; color: var(--text-primary);">Prévia da Imagem</h3>
-                <div style="display: flex; align-items: center;">
-                    <button id="btn-zoom-image" class="control-btn" style="padding: 4px 10px; font-size: 0.78rem; margin-right: 8px;"><i class="fa-solid fa-magnifying-glass-plus"></i> Zoom</button>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <button id="btn-select-image" class="control-btn" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-check"></i> Selecionar</button>
+                    <button id="btn-zoom-image" class="control-btn" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-magnifying-glass-plus"></i> Zoom</button>
                     <button id="btn-close-image-preview" class="control-btn" style="padding: 4px 10px; font-size: 0.78rem;"><i class="fa-solid fa-xmark"></i> Fechar</button>
                 </div>
             </div>
-            <div id="preview-image-container" style="max-width: 100%; max-height: 75vh; overflow: auto; display: flex; justify-content: center; align-items: center; width: 100%;">
-                <img id="preview-image-element" style="max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 6px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); cursor: zoom-in;">
+            <div id="preview-image-container" style="max-width: 100%; max-height: 75vh; overflow: hidden; display: flex; justify-content: center; align-items: center; width: 100%; cursor: grab; touch-action: none;">
+                <img id="preview-image-element" style="max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 6px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); cursor: zoom-in; transition: transform 0.15s ease-out; user-select: none; -webkit-user-drag: none;">
             </div>
         </div>
         <button id="btn-next-image" class="modal-nav-btn next" title="Próxima Imagem"><i class="fa-solid fa-chevron-right"></i></button>
