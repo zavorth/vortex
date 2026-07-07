@@ -1,0 +1,11 @@
+# Adicione os IDs das extensões do Chrome permitidas abaixo (um por linha).
+# Linhas que começam com # são ignoradas.
+#
+# Para encontrar o ID da extensão:
+#   1. Abra chrome://extensions (ou edge://extensions)
+#   2. Ative "Modo desenvolvedor"
+#   3. Copie o ID da extensão VortexMedia (24 caracteres)
+#
+# Exemplo: kmgipnklamfkmlclbmnjfoadpbhlgfkp
+#
+# Sem nenhum ID listado aqui, TODAS as extensões Chrome serão bloqueadas.

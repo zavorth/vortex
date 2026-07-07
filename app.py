@@ -11,6 +11,7 @@ from flask import Flask, request, jsonify, render_template, Response
 from extractors import extract_media, GenericExtractor
 from services.proxy_safety import is_safe_url, is_safe_redirect, proxy_fetch, PROXY_MAX_RESPONSE_BYTES
 from services.file_safety import is_safe_cookie_path, resolve_cookie_path, is_safe_path, COOKIES_DIR_NAME
+from services.rate_limiter import rate_limit, default_limiter, strict_limiter
 import requests
 from bs4 import BeautifulSoup
 
@@ -271,6 +272,7 @@ def add_header(r):
     return r
 
 @app.route('/api/analyze-html', methods=['POST'])
+@rate_limit(strict_limiter)
 def analyze_html():
     if 'html_file' not in request.files:
         return jsonify({"error": "Nenhum arquivo HTML enviado."}), 400
@@ -299,6 +301,7 @@ def analyze_html():
         return jsonify({"error": f"Erro interno ao analisar o arquivo HTML."}), 500
 
 @app.route('/api/analyze', methods=['POST'])
+@rate_limit(strict_limiter)
 def analyze():
     data = request.json
     url = data.get('url', '').strip()
@@ -915,6 +918,7 @@ def browse_file():
     return jsonify({"cookie_id": ""})
 
 @app.route('/api/upload-cookies', methods=['POST'])
+@rate_limit(default_limiter)
 def upload_cookies():
     """Receives a cookies.txt file uploaded from the client and saves it locally."""
     if 'file' not in request.files:
@@ -968,6 +972,7 @@ def log_error():
     return jsonify({"success": True})
 
 @app.route('/api/proxy')
+@rate_limit(default_limiter)
 def proxy_media():
     """Proxy route to stream media files (avoiding browser Referer-related CORS/403 errors)."""
     url_val = request.args.get('url')
@@ -1032,6 +1037,7 @@ def proxy_media():
         return str(e), 500
 
 @app.route('/api/download', methods=['POST'])
+@rate_limit(strict_limiter)
 def download():
     global download_state
     
@@ -1369,6 +1375,7 @@ def cancel_downloads():
     return jsonify({"success": True})
 
 @app.route('/api/update-ytdl', methods=['POST'])
+@rate_limit(strict_limiter)
 def update_ytdl():
     """Endpoint to update the yt-dlp package in the virtual environment."""
     import subprocess
