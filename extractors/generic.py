@@ -243,7 +243,79 @@ class GenericExtractor(BaseExtractor):
                         })
                         media_counter += 1
 
-        # 2.5. Extract video/audio from iframes (follow up to 3 levels deep)
+        # 2.5. Extract media URLs from JavaScript arrays in <script> tags
+        # Pattern: var arr = ["url1.jpg", "url2.jpg", ...];
+        scripts = soup.find_all('script')
+        for script in scripts:
+            if not script.string:
+                continue
+            # Find arrays containing image/video URLs in JavaScript
+            # Matches any array assignment with quoted URLs ending in media extensions
+            array_matches = re.findall(
+                r'(?:var|let|const)\s+\w+\s*=\s*\[(.*?)\]',
+                script.string, re.DOTALL
+            )
+            for match in array_matches:
+                urls = re.findall(r'["\']([^"\']+)["\']', match)
+                # Determine the common domain/path pattern from the first media URLs
+                domain_pattern = None
+                media_urls = []
+                for u in urls:
+                    u = u.strip()
+                    if not u:
+                        continue
+                    url_low = u.lower().split('?')[0]
+                    ext = url_low.rsplit('.', 1)[-1] if '.' in url_low else ''
+                    if ext in ('jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'avif', 'mp4', 'm3u8', 'webm'):
+                        media_urls.append(u)
+                        if domain_pattern is None:
+                            parsed_u = urllib.parse.urlparse(u if u.startswith('http') else urllib.parse.urljoin(url, u))
+                            domain_pattern = parsed_u.netloc
+
+                for media_url in media_urls:
+                    media_url = media_url.strip()
+                    if not media_url:
+                        continue
+
+                    # Check if URL points to a media file
+                    url_lower = media_url.lower().split('?')[0]
+                    ext = url_lower.rsplit('.', 1)[-1] if '.' in url_lower else ''
+
+                    if ext in ('jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'avif'):
+                        media_type = 'image'
+                    elif ext in ('mp4', 'm3u8', 'webm'):
+                        media_type = 'video'
+                    else:
+                        continue
+
+                    if not media_url.startswith('http'):
+                        media_url = urllib.parse.urljoin(url, media_url)
+
+                    # Filter out ad/tracking images that don't match the domain pattern
+                    if media_type == 'image' and domain_pattern:
+                        parsed_check = urllib.parse.urlparse(media_url)
+                        if parsed_check.netloc != domain_pattern:
+                            continue
+
+                    parsed = urllib.parse.urlparse(media_url)
+                    filename = os.path.basename(parsed.path) or f"{media_type}_{media_counter}.{ext or 'jpg'}"
+                    # Strip query params from filename
+                    filename = filename.split('?')[0]
+                    filename = re.sub(r'[\\/*?:"<>|]', "", filename).strip()[:100]
+
+                    if filename not in seen_filenames:
+                        seen_filenames.add(filename)
+                        media_items.append({
+                            "id": f"media_{media_counter}",
+                            "type": media_type,
+                            "url": media_url,
+                            "thumbnail": media_url if media_type == 'image' else "/static/video-placeholder.png",
+                            "filename": filename,
+                            "source": "JavaScript Array"
+                        })
+                        media_counter += 1
+
+        # 2.6. Extract video/audio from iframes (follow up to 3 levels deep)
         iframes = soup.find_all('iframe')
         iframe_depth = getattr(self, '_iframe_depth', 0)
         if iframe_depth < 3:
@@ -252,6 +324,21 @@ class GenericExtractor(BaseExtractor):
                 if not iframe_src or iframe_src.startswith('about:'):
                     continue
                 iframe_url = urllib.parse.urljoin(url, iframe_src)
+
+                # Special handling for Blogger video player — try yt-dlp directly
+                if 'blogger.com/video.g' in iframe_url:
+                    try:
+                        ydl_items, ydl_title = self._extract_yt_dlp_media(iframe_url)
+                        for item in ydl_items:
+                            if item.get('url') and item['url'] not in seen_filenames:
+                                seen_filenames.add(item['url'])
+                                item["source"] = "Blogger Video (yt-dlp)"
+                                media_items.append(item)
+                                media_counter += 1
+                    except Exception:
+                        pass
+                    continue
+
                 try:
                     iframe_html = self._fetch_iframe_content(iframe_url)
                     if not iframe_html:
