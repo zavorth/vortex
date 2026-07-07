@@ -5,6 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 import yt_dlp
 from .base import BaseExtractor
+from services.headless_fetch import headless_fetch_video_url, headless_fetch_iframe_video
 
 class GenericExtractor(BaseExtractor):
     """Fallback extractor using yt-dlp and general HTML parsing."""
@@ -325,7 +326,7 @@ class GenericExtractor(BaseExtractor):
                     continue
                 iframe_url = urllib.parse.urljoin(url, iframe_src)
 
-                # Special handling for Blogger video player — try yt-dlp directly
+                # Special handling for Blogger video player — try yt-dlp then headless
                 if 'blogger.com/video.g' in iframe_url:
                     try:
                         ydl_items, ydl_title = self._extract_yt_dlp_media(iframe_url)
@@ -337,6 +338,30 @@ class GenericExtractor(BaseExtractor):
                                 media_counter += 1
                     except Exception:
                         pass
+
+                    # Fallback: try headless browser if yt-dlp found nothing
+                    if not any(it.get('type') == 'video' for it in media_items[-3:]):
+                        try:
+                            hl_videos = headless_fetch_iframe_video(iframe_url)
+                            for item in hl_videos:
+                                vid_url = item["url"]
+                                if vid_url and vid_url not in seen_filenames:
+                                    seen_filenames.add(vid_url)
+                                    parsed_v = urllib.parse.urlparse(vid_url)
+                                    fname = os.path.basename(parsed_v.path) or "blogger_video.mp4"
+                                    fname = fname.split('?')[0]
+                                    fname = re.sub(r'[\\/*?:"<>|]', "", fname).strip()[:100]
+                                    media_items.append({
+                                        "id": f"media_{media_counter}",
+                                        "type": "video",
+                                        "url": vid_url,
+                                        "thumbnail": "/static/video-placeholder.png",
+                                        "filename": fname,
+                                        "source": "Blogger Video (headless)"
+                                    })
+                                    media_counter += 1
+                        except Exception:
+                            pass
                     continue
 
                 try:

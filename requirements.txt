@@ -3,4 +3,5 @@ beautifulsoup4==4.12.3
 requests==2.32.3
 urllib3==2.2.1
 yt-dlp>=2024.3.10
+playwright>=1.40.0  # optional: headless browser for JS-heavy sites (run: python -m playwright install chromium)
 
