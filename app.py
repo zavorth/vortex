@@ -13,6 +13,7 @@ from services.proxy_safety import is_safe_url, is_safe_redirect, proxy_fetch, PR
 from services.file_safety import is_safe_cookie_path, resolve_cookie_path, is_safe_path, COOKIES_DIR_NAME
 from services.rate_limiter import rate_limit, default_limiter, strict_limiter
 from services.logger import logger
+from services.download_history import add_download_record, update_download_record, get_history, clear_history
 import requests
 from bs4 import BeautifulSoup
 
@@ -858,6 +859,17 @@ def download_manager_thread(items, download_dir, album_url, cookies_path=None, c
     with download_lock:
         if download_state["status"] != "idle":
             download_state["status"] = "completed"
+            # Record in history
+            try:
+                file_names = [item.get('filename', '') for item in items]
+                add_download_record(
+                    title=album_url or "Download",
+                    files=file_names,
+                    download_dir=download_dir,
+                    status='completed'
+                )
+            except Exception:
+                pass
             try:
                 if os.path.exists(download_dir):
                     os.startfile(download_dir)
@@ -1410,6 +1422,19 @@ def update_ytdl():
     except Exception as e:
         print("yt-dlp update exception:", str(e))
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/history', methods=['GET'])
+def get_download_history():
+    """Return recent download history."""
+    limit = request.args.get('limit', 20, type=int)
+    history = get_history(limit=limit)
+    return jsonify({"history": history})
+
+@app.route('/api/history/clear', methods=['POST'])
+def clear_download_history():
+    """Clear all download history."""
+    clear_history()
+    return jsonify({"success": True})
 
 if __name__ == '__main__':
     import webbrowser

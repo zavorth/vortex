@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  vortex:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./saved_cookies:/app/saved_cookies
+      - ./allowed_extensions.txt:/app/allowed_extensions.txt
+    environment:
+      - VORTEX_LOG_LEVEL=INFO
+    restart: unless-stopped
