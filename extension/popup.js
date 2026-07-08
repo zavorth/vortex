@@ -149,6 +149,21 @@ document.addEventListener('DOMContentLoaded', () => {
         monitorFilesCount.textContent = total > 0 ? `${done} / ${total} arquivos` : '—';
     }
 
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+
+    function setConnectionStatus(connected) {
+        if (connected) {
+            statusDot.style.background = '#10b981';
+            statusText.textContent = 'Conectado';
+            statusText.style.color = '#64748b';
+        } else {
+            statusDot.style.background = '#ef4444';
+            statusText.textContent = 'Servidor inacessível';
+            statusText.style.color = '#ef4444';
+        }
+    }
+
     function pollStatus() {
         fetch(`${VORTEX_BASE}/api/status`, {
             method: 'GET',
@@ -156,9 +171,11 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .then(r => r.json())
         .then(data => {
+            setConnectionStatus(true);
             updateMonitor(data);
         })
         .catch(() => {
+            setConnectionStatus(false);
             monitorPanel.classList.remove('visible');
         });
     }

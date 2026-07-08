@@ -9,7 +9,9 @@ import secrets
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock, Thread
 from flask import Flask, request, jsonify, render_template, Response
-from extractors import extract_media, GenericExtractor
+from extractors import extract_media, GenericExtractor, EXTRACTORS
+
+app_start_time = time.time()
 from services.proxy_safety import is_safe_url, is_safe_redirect, proxy_fetch, PROXY_MAX_RESPONSE_BYTES
 from services.file_safety import is_safe_cookie_path, resolve_cookie_path, is_safe_path, COOKIES_DIR_NAME
 from services.rate_limiter import rate_limit, default_limiter, strict_limiter
@@ -67,6 +69,9 @@ def verify_vortex_token():
     if request.method == 'OPTIONS':
         return '', 200
         
+    if request.path == '/api/health':
+        return
+
     if request.path.startswith('/api/'):
         # Allow Chrome/Edge extensions to bypass token via Origin, verifying ID
         origin = request.headers.get('Origin', '')
@@ -262,6 +267,16 @@ def check_item_size(item):
 @app.route('/')
 def index():
     return render_template('index.html', token=vortex_token)
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({
+        "status": "ok",
+        "version": "2.0.0",
+        "uptime": int(time.time() - app_start_time),
+        "extractors": len(EXTRACTORS),
+        "docker": os.path.exists("/.dockerenv")
+    })
 
 @app.after_request
 def add_header(r):

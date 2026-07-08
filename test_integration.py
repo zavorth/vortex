@@ -4,6 +4,7 @@ import io
 import os
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -265,6 +266,155 @@ class TestAnalyzeHtml(FlaskIntegrationBase):
         body = resp.get_json()
         self.assertIn('media', body)
         self.assertIn('title', body)
+
+
+class TestSSEProgressStream(FlaskIntegrationBase):
+    """SSE progress-stream requires token and yields status data."""
+
+    def test_no_token_returns_403(self):
+        resp = self.client.get('/api/progress-stream')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_valid_token_returns_200_event_stream(self):
+        resp = self.client.get(
+            '/api/progress-stream',
+            headers=self._auth_headers()
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content_type, 'text/event-stream')
+
+    def test_stream_yields_status_field(self):
+        resp = self.client.get(
+            '/api/progress-stream',
+            headers=self._auth_headers()
+        )
+        data = resp.get_data(as_text=True)
+        self.assertIn('"status"', data)
+
+
+class TestProxyConfig(FlaskIntegrationBase):
+    """Proxy config GET/POST round-trip and validation."""
+
+    def tearDown(self):
+        super().tearDown()
+        proxy_file = os.path.join(os.getcwd(), 'proxy_config.json')
+        if os.path.exists(proxy_file):
+            os.remove(proxy_file)
+
+    def test_get_returns_empty_by_default(self):
+        resp = self.client.get(
+            '/api/proxy-config',
+            headers=self._auth_headers()
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertFalse(body['enabled'])
+        self.assertEqual(body['proxy_url'], '')
+
+    def test_post_saves_http_proxy(self):
+        resp = self.client.post(
+            '/api/proxy-config',
+            json={'enabled': True, 'proxy_url': 'http://127.0.0.1:8080', 'type': 'http'},
+            headers=self._auth_headers()
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertTrue(body['success'])
+
+        # Verify it was persisted
+        resp2 = self.client.get(
+            '/api/proxy-config',
+            headers=self._auth_headers()
+        )
+        body2 = resp2.get_json()
+        self.assertTrue(body2['enabled'])
+        self.assertEqual(body2['proxy_url'], 'http://127.0.0.1:8080')
+
+    def test_post_saves_socks5_proxy(self):
+        resp = self.client.post(
+            '/api/proxy-config',
+            json={'enabled': True, 'proxy_url': 'socks5://127.0.0.1:1080', 'type': 'socks5'},
+            headers=self._auth_headers()
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertTrue(body['success'])
+
+    def test_post_invalid_scheme_returns_400(self):
+        resp = self.client.post(
+            '/api/proxy-config',
+            json={'enabled': True, 'proxy_url': 'ftp://bad-proxy', 'type': 'http'},
+            headers=self._auth_headers()
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_post_empty_body_returns_current_config(self):
+        resp = self.client.post(
+            '/api/proxy-config',
+            json={},
+            headers=self._auth_headers()
+        )
+        self.assertEqual(resp.status_code, 200)
+
+
+class TestRateLimiterPersistence(FlaskIntegrationBase):
+    """RateLimiter JSON state save/load and window pruning."""
+
+    def test_saves_state_to_file(self):
+        from services.rate_limiter import RateLimiter
+        tmp = os.path.join(self.tmpdir, 'test_rate_state.json')
+        with patch('services.rate_limiter._STATE_FILE', tmp):
+            rl = RateLimiter(max_requests=10, window_seconds=60)
+            rl.is_allowed('1.2.3.4')
+            rl._save_state()
+            self.assertTrue(os.path.exists(tmp))
+
+    def test_loads_state_from_file_on_init(self):
+        import json
+        now = time.time()
+        tmp = os.path.join(self.tmpdir, 'test_rate_state2.json')
+        with open(tmp, 'w') as f:
+            json.dump({'5.6.7.8': [now - 10, now - 5]}, f)
+
+        with patch('services.rate_limiter._STATE_FILE', tmp):
+            from services.rate_limiter import RateLimiter
+            rl = RateLimiter(max_requests=10, window_seconds=60)
+            self.assertIn('5.6.7.8', rl._hits)
+            self.assertEqual(len(rl._hits['5.6.7.8']), 2)
+
+    def test_loaded_state_prunes_expired_entries(self):
+        import json
+        now = time.time()
+        old = now - 120
+        recent = now - 5
+        tmp = os.path.join(self.tmpdir, 'test_rate_state3.json')
+        with open(tmp, 'w') as f:
+            json.dump({'10.0.0.1': [old, recent]}, f)
+
+        with patch('services.rate_limiter._STATE_FILE', tmp):
+            from services.rate_limiter import RateLimiter
+            rl = RateLimiter(max_requests=10, window_seconds=60)
+            self.assertEqual(len(rl._hits['10.0.0.1']), 1)
+            self.assertAlmostEqual(rl._hits['10.0.0.1'][0], recent, delta=1)
+
+
+class TestHealthCheck(FlaskIntegrationBase):
+    """Health check endpoint returns system status."""
+
+    def test_health_returns_200(self):
+        resp = self.client.get('/api/health')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_health_contains_required_fields(self):
+        resp = self.client.get('/api/health')
+        body = resp.get_json()
+        for field in ('status', 'version', 'uptime'):
+            self.assertIn(field, body)
+
+    def test_health_status_is_ok(self):
+        resp = self.client.get('/api/health')
+        body = resp.get_json()
+        self.assertEqual(body['status'], 'ok')
 
 
 if __name__ == '__main__':

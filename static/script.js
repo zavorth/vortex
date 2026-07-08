@@ -919,7 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Set placeholder metadata values during load
         if (albumTitle) albumTitle.textContent = "Analisando página...";
-        if (albumCount) albumCount.textContent = "Buscando imagens, vídeos e arquivos...";
+        if (albumCount) albumCount.textContent = "Buscando imagens, vídeos e arquivos... (pode levar alguns segundos para sites com player de vídeo)";
         
         for (let i = 0; i < 12; i++) {
             const card = document.createElement('div');
