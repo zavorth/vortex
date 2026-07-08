@@ -1626,4 +1626,4 @@ if __name__ == '__main__':
     logger.info('VORTEX', f"Acesse no Celular (na mesma rede Wi-Fi): http://{local_ip}:8080")
     logger.info('VORTEX', "="*60)
     
-    app.run(host='127.0.0.1', port=8080, debug=False)
+    app.run(host='0.0.0.0', port=8080, debug=False)
